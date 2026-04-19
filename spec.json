@@ -1,0 +1,491 @@
+{
+  "project": {
+    "name": "Blu Engajamento Comercial",
+    "description": "Ferramenta interna para executivos comerciais da Blu registrarem indicações de varejistas recebidas de indústrias parceiras no processo de conversão boleto → PagBlu.",
+    "stack": {
+      "frontend": "HTML5 + Tailwind CSS (CDN) + Alpine.js (CDN)",
+      "backend": "Python 3.11+ / FastAPI + Uvicorn",
+      "database": "Supabase (PostgreSQL) via supabase-py",
+      "hosting": "A definir (Railway/Render para backend, Netlify/Vercel para frontend)"
+    },
+    "totalSprints": 3,
+    "sprintDurationWeeks": 1
+  },
+  "sprints": [
+    {
+      "id": 1,
+      "name": "Sprint 1 — Fundação: Ambiente, Banco e Estrutura Base",
+      "goal": "Ter o projeto configurado localmente, o schema do banco criado no Supabase e o FastAPI respondendo com um endpoint de health check.",
+      "startDate": null,
+      "endDate": null,
+      "tasks": [
+        {
+          "id": "S1-T01",
+          "title": "Criar estrutura de pastas e arquivos do projeto",
+          "description": "Definir a estrutura de diretórios separando frontend (HTML/CSS/JS) do backend (FastAPI). Criar arquivos base: README.md, .gitignore, .env.example.",
+          "type": "setup",
+          "priority": "critical",
+          "estimateHours": 1,
+          "dependsOn": [],
+          "acceptanceCriteria": [
+            "Estrutura de pastas criada: /frontend e /backend na raiz",
+            ".gitignore inclui .env, __pycache__, *.pyc, node_modules",
+            ".env.example documenta todas as variáveis necessárias (SUPABASE_URL, SUPABASE_KEY)"
+          ],
+          "files": [
+            "README.md",
+            ".gitignore",
+            ".env.example",
+            "frontend/index.html",
+            "frontend/painel.html",
+            "backend/main.py",
+            "backend/requirements.txt"
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "S1-T02",
+          "title": "Configurar ambiente Python e dependências FastAPI",
+          "description": "Criar virtualenv, instalar FastAPI, Uvicorn, supabase-py, pydantic e python-dotenv. Gerar requirements.txt.",
+          "type": "setup",
+          "priority": "critical",
+          "estimateHours": 1,
+          "dependsOn": ["S1-T01"],
+          "acceptanceCriteria": [
+            "requirements.txt gerado com versões fixadas (fastapi, uvicorn, supabase, pydantic, python-dotenv)",
+            "Comando `uvicorn main:app --reload` sobe o servidor sem erros",
+            "GET / retorna {\"status\": \"ok\"} com HTTP 200"
+          ],
+          "files": [
+            "backend/requirements.txt",
+            "backend/main.py"
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "S1-T03",
+          "title": "Criar schema do banco de dados no Supabase",
+          "description": "Criar as tabelas `indicacoes` e `varejistas_indicados` no Supabase com todos os campos definidos no PRD. Habilitar RLS com política permissiva para MVP.",
+          "type": "setup",
+          "priority": "critical",
+          "estimateHours": 2,
+          "dependsOn": ["S1-T01"],
+          "acceptanceCriteria": [
+            "Tabela `indicacoes` criada com campos: id (uuid, PK), executivo_nome (text), executivo_email (text), cnpj_industria (varchar 14), doc_representante (varchar 14), detalhes (text, nullable), criado_em (timestamptz, default now())",
+            "Tabela `varejistas_indicados` criada com campos: id (uuid, PK), indicacao_id (uuid, FK → indicacoes.id), cnpj_varejista (varchar 14)",
+            "RLS habilitado em ambas as tabelas com política de SELECT e INSERT irrestrita",
+            "Migration SQL salva em backend/migrations/001_initial_schema.sql"
+          ],
+          "files": [
+            "backend/migrations/001_initial_schema.sql"
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "S1-T04",
+          "title": "Configurar cliente Supabase no backend",
+          "description": "Criar módulo de conexão com Supabase usando variáveis de ambiente. Testar conexão com uma query simples.",
+          "type": "backend",
+          "priority": "critical",
+          "estimateHours": 1,
+          "dependsOn": ["S1-T02", "S1-T03"],
+          "acceptanceCriteria": [
+            "Módulo backend/database.py exporta client Supabase configurado via .env",
+            "Aplicação não sobe se SUPABASE_URL ou SUPABASE_KEY estiverem ausentes",
+            "Endpoint GET /health retorna {\"status\": \"ok\", \"database\": \"connected\"} quando Supabase está acessível"
+          ],
+          "files": [
+            "backend/database.py",
+            "backend/main.py"
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "S1-T05",
+          "title": "Criar Pydantic models para indicação e varejista",
+          "description": "Definir os schemas de entrada e saída da API usando Pydantic v2: IndicacaoCreate, IndicacaoResponse, VarejistaCreate.",
+          "type": "backend",
+          "priority": "high",
+          "estimateHours": 1.5,
+          "dependsOn": ["S1-T02"],
+          "acceptanceCriteria": [
+            "IndicacaoCreate valida que cnpj_industria tem 14 dígitos numéricos",
+            "IndicacaoCreate valida que doc_representante tem 11 (CPF) ou 14 (CNPJ) dígitos",
+            "IndicacaoCreate valida que varejistas é lista não-vazia com ao menos 1 CNPJ",
+            "IndicacaoResponse inclui id, todos os campos e lista de cnpjs_varejistas",
+            "Schemas documentados com exemplos no docstring para aparecer no Swagger"
+          ],
+          "files": [
+            "backend/schemas.py"
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "S1-T06",
+          "title": "Configurar CORS no FastAPI",
+          "description": "Adicionar middleware CORS para permitir requisições do frontend (localhost em dev, domínio final em prod).",
+          "type": "backend",
+          "priority": "high",
+          "estimateHours": 0.5,
+          "dependsOn": ["S1-T02"],
+          "acceptanceCriteria": [
+            "CORSMiddleware adicionado com allow_origins configurável via variável de ambiente ALLOWED_ORIGINS",
+            "Em desenvolvimento, localhost:5500 e localhost:3000 são permitidos",
+            "Requisições de origens não listadas recebem HTTP 403"
+          ],
+          "files": [
+            "backend/main.py"
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "S1-T07",
+          "title": "Criar layout base HTML com Tailwind e identidade Blu",
+          "description": "Criar o arquivo HTML base com Tailwind CSS via CDN, paleta de cores da Blu (azul #1A56DB como primário), tipografia e componentes reutilizáveis (botão, input, badge).",
+          "type": "design",
+          "priority": "high",
+          "estimateHours": 2,
+          "dependsOn": ["S1-T01"],
+          "acceptanceCriteria": [
+            "HTML base inclui Tailwind CSS e Alpine.js via CDN",
+            "Paleta de cores Blu definida em config Tailwind inline (azul primário, cinza neutro, verde sucesso, vermelho erro)",
+            "Header com logo Blu e navegação entre Formulário e Painel",
+            "Layout responsivo: mobile-first, funcional em 375px e 1280px",
+            "Componentes base estilizados: input com label, botão primário, mensagem de erro"
+          ],
+          "files": [
+            "frontend/index.html",
+            "frontend/painel.html"
+          ],
+          "status": "todo"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Sprint 2 — Funcionalidades Core: Formulário, API e Painel",
+      "goal": "Formulário funcional enviando dados para o backend, API gravando no Supabase e painel listando as indicações cadastradas.",
+      "startDate": null,
+      "endDate": null,
+      "tasks": [
+        {
+          "id": "S2-T01",
+          "title": "Implementar validação de CNPJ e CPF no frontend (JavaScript)",
+          "description": "Criar módulo JS com funções de validação de CNPJ (algoritmo módulo 11, 14 dígitos) e CPF (algoritmo módulo 11, 11 dígitos). Aplicar máscaras de input. Detectar automaticamente o tipo de documento pelo número de dígitos digitados.",
+          "type": "frontend",
+          "priority": "critical",
+          "estimateHours": 3,
+          "dependsOn": ["S1-T07"],
+          "acceptanceCriteria": [
+            "Função validarCNPJ() retorna true/false para qualquer CNPJ (testada com CNPJs válidos e inválidos conhecidos)",
+            "Função validarCPF() retorna true/false para qualquer CPF",
+            "Campo de representante detecta CPF (11 dígitos) ou CNPJ (14 dígitos) automaticamente e aplica máscara correta",
+            "Mensagem de erro aparece abaixo do campo ao perder foco com documento inválido",
+            "Mensagem de erro some ao corrigir o campo"
+          ],
+          "files": [
+            "frontend/js/validacao.js"
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "S2-T02",
+          "title": "Implementar formulário com Alpine.js — campos estáticos",
+          "description": "Construir o formulário com Alpine.js gerenciando estado: executivo (nome/email), CNPJ indústria, documento representante, detalhes. Incluir lógica de submit com fetch para o backend.",
+          "type": "frontend",
+          "priority": "critical",
+          "estimateHours": 3,
+          "dependsOn": ["S2-T01"],
+          "acceptanceCriteria": [
+            "Todos os campos obrigatórios bloqueiam o submit se vazios, com erro inline",
+            "Submit chama POST /indicacoes via fetch com JSON body correto",
+            "Durante o envio, botão exibe 'Enviando...' e fica desabilitado",
+            "Sucesso: formulário é limpo e exibe banner verde de confirmação por 4 segundos",
+            "Erro de rede: banner vermelho com mensagem 'Erro ao enviar. Tente novamente.'"
+          ],
+          "files": [
+            "frontend/index.html",
+            "frontend/js/formulario.js"
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "S2-T03",
+          "title": "Implementar campo dinâmico de CNPJs de varejistas",
+          "description": "Campo que permite adicionar e remover múltiplos CNPJs de varejistas. Mínimo 1, máximo 20. Cada CNPJ validado individualmente ao perder foco.",
+          "type": "frontend",
+          "priority": "critical",
+          "estimateHours": 2,
+          "dependsOn": ["S2-T01", "S2-T02"],
+          "acceptanceCriteria": [
+            "Botão '+ Adicionar varejista' insere novo campo de input com máscara CNPJ",
+            "Botão de remover (ícone lixeira) remove o campo correspondente (mínimo 1 campo sempre visível)",
+            "Cada campo valida CNPJ individualmente ao perder foco",
+            "Submit é bloqueado se qualquer CNPJ de varejista for inválido",
+            "Com mais de 5 varejistas, a área de varejistas exibe scroll vertical"
+          ],
+          "files": [
+            "frontend/index.html",
+            "frontend/js/formulario.js"
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "S2-T04",
+          "title": "Implementar endpoint POST /indicacoes no FastAPI",
+          "description": "Criar rota que recebe o payload da indicação, valida com Pydantic, executa validação de documentos (CNPJ/CPF) no backend e persiste nas tabelas indicacoes e varejistas_indicados no Supabase.",
+          "type": "backend",
+          "priority": "critical",
+          "estimateHours": 3,
+          "dependsOn": ["S1-T04", "S1-T05"],
+          "acceptanceCriteria": [
+            "POST /indicacoes com payload válido retorna HTTP 201 com o objeto criado (incluindo id e criado_em)",
+            "CNPJ inválido retorna HTTP 422 com campo 'detail' descrevendo qual documento falhou",
+            "Todos os CNPJs são gravados sem máscara (somente dígitos) no banco",
+            "Varejistas são inseridos na tabela varejistas_indicados com FK correta para indicacao_id",
+            "Erros do Supabase são capturados e retornam HTTP 500 com mensagem genérica (sem expor detalhes internos)"
+          ],
+          "files": [
+            "backend/routers/indicacoes.py",
+            "backend/services/indicacoes_service.py",
+            "backend/main.py"
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "S2-T05",
+          "title": "Implementar endpoint GET /indicacoes no FastAPI",
+          "description": "Rota que retorna todas as indicações com seus varejistas, suportando filtros opcionais por nome do executivo e CNPJ da indústria via query params.",
+          "type": "backend",
+          "priority": "high",
+          "estimateHours": 2,
+          "dependsOn": ["S2-T04"],
+          "acceptanceCriteria": [
+            "GET /indicacoes retorna lista de indicações ordenadas por criado_em DESC",
+            "Cada item inclui lista de cnpjs_varejistas (join com varejistas_indicados)",
+            "?executivo=texto filtra por nome do executivo (case-insensitive, parcial)",
+            "?cnpj_industria=00000000000000 filtra por CNPJ exato da indústria",
+            "Retorna lista vazia [] (não erro) quando nenhuma indicação é encontrada"
+          ],
+          "files": [
+            "backend/routers/indicacoes.py",
+            "backend/services/indicacoes_service.py"
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "S2-T06",
+          "title": "Implementar painel de listagem no frontend",
+          "description": "Página painel.html com tabela de indicações carregada via GET /indicacoes. Campo de busca filtra em tempo real por executivo ou CNPJ da indústria. Linha expansível mostra CNPJs dos varejistas e detalhes.",
+          "type": "frontend",
+          "priority": "high",
+          "estimateHours": 3,
+          "dependsOn": ["S2-T05"],
+          "acceptanceCriteria": [
+            "Tabela exibe colunas: Executivo, CNPJ Indústria, Representante, Qtd. Varejistas, Data",
+            "Campo de busca filtra por executivo ou CNPJ da indústria sem recarregar a página",
+            "Clique na linha expande e mostra: lista de CNPJs de varejistas formatados e campo de detalhes",
+            "Estado de carregamento exibe skeleton loader enquanto fetch está em andamento",
+            "Estado de erro exibe mensagem 'Não foi possível carregar as indicações' com botão de retry"
+          ],
+          "files": [
+            "frontend/painel.html",
+            "frontend/js/painel.js"
+          ],
+          "status": "todo"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Sprint 3 — Qualidade e Entrega: CSV, Edge Cases e Deploy",
+      "goal": "Exportação CSV funcionando, todos os edge cases cobertos, aplicação deployada e acessível por link interno.",
+      "startDate": null,
+      "endDate": null,
+      "tasks": [
+        {
+          "id": "S3-T01",
+          "title": "Implementar endpoint GET /indicacoes/export/csv",
+          "description": "Endpoint FastAPI que gera e retorna arquivo CSV com todas as indicações (respeitando filtros da query). CSV com encoding UTF-8 BOM para compatibilidade com Excel.",
+          "type": "backend",
+          "priority": "critical",
+          "estimateHours": 2,
+          "dependsOn": ["S2-T05"],
+          "acceptanceCriteria": [
+            "GET /indicacoes/export/csv retorna arquivo com Content-Type: text/csv e Content-Disposition: attachment; filename=blu_indicacoes_YYYY-MM-DD.csv",
+            "CSV inclui colunas: Executivo Nome, Executivo Email, CNPJ Industria, Documento Representante, CNPJs Varejistas (separados por ;), Data Cadastro, Detalhes",
+            "Encoding UTF-8 com BOM (\\ufeff) para compatibilidade com Excel",
+            "CNPJs são formatados com máscara no CSV (ex: 00.000.000/0001-00)",
+            "Aceita os mesmos query params de filtro do GET /indicacoes"
+          ],
+          "files": [
+            "backend/routers/indicacoes.py",
+            "backend/services/export_service.py"
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "S3-T02",
+          "title": "Adicionar botão de exportação CSV no painel",
+          "description": "Botão 'Exportar CSV' no painel que chama GET /indicacoes/export/csv com os filtros ativos e dispara o download no browser.",
+          "type": "frontend",
+          "priority": "high",
+          "estimateHours": 1,
+          "dependsOn": ["S3-T01", "S2-T06"],
+          "acceptanceCriteria": [
+            "Botão 'Exportar CSV' visível no topo do painel",
+            "Clique aciona download do arquivo com nome blu_indicacoes_YYYY-MM-DD.csv",
+            "Se filtros estiverem ativos, o CSV exportado respeita os filtros",
+            "Botão exibe 'Gerando...' durante o download e volta ao normal após"
+          ],
+          "files": [
+            "frontend/painel.html",
+            "frontend/js/painel.js"
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "S3-T03",
+          "title": "Tratar edge cases de validação e UX no formulário",
+          "description": "Cobrir cenários não tratados: CNPJ de varejista duplicado na mesma indicação, campos com apenas espaços, CNPJ com todos os dígitos iguais (ex: 00000000000000).",
+          "type": "frontend",
+          "priority": "high",
+          "estimateHours": 2,
+          "dependsOn": ["S2-T03"],
+          "acceptanceCriteria": [
+            "CNPJs duplicados de varejistas na mesma indicação são detectados e exibem erro 'CNPJ já adicionado'",
+            "Campos com apenas espaços são tratados como vazios (trim antes de validar)",
+            "CNPJs com todos os dígitos iguais (00000000000000, 11111111111111 etc.) são rejeitados como inválidos",
+            "CPFs com todos os dígitos iguais (00000000000 etc.) são rejeitados como inválidos",
+            "Validação no backend também cobre esses casos (não só o frontend)"
+          ],
+          "files": [
+            "frontend/js/validacao.js",
+            "backend/schemas.py"
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "S3-T04",
+          "title": "Adicionar feedback visual e responsividade mobile ao formulário",
+          "description": "Revisar o formulário em mobile (375px): inputs grandes o suficiente para toque, espaçamento adequado, botão de submit fixo no bottom em mobile.",
+          "type": "design",
+          "priority": "medium",
+          "estimateHours": 2,
+          "dependsOn": ["S2-T02", "S2-T03"],
+          "acceptanceCriteria": [
+            "Formulário usável em iPhone SE (375px) sem scroll horizontal",
+            "Inputs têm altura mínima de 48px (área de toque adequada)",
+            "Botão 'Enviar Indicação' é sticky no bottom em mobile",
+            "Painel em mobile exibe tabela com scroll horizontal suave",
+            "Teste visual realizado em Chrome DevTools com emulação de dispositivo móvel"
+          ],
+          "files": [
+            "frontend/index.html",
+            "frontend/painel.html"
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "S3-T05",
+          "title": "Configurar variáveis de ambiente e preparar para deploy",
+          "description": "Separar configurações de dev e prod. Criar script de start para produção. Documentar processo de deploy no README.",
+          "type": "devops",
+          "priority": "critical",
+          "estimateHours": 2,
+          "dependsOn": ["S1-T04", "S1-T06"],
+          "acceptanceCriteria": [
+            ".env.example documenta todas as variáveis: SUPABASE_URL, SUPABASE_KEY, ALLOWED_ORIGINS, PORT",
+            "backend/Procfile ou start command documentado para Railway/Render",
+            "README.md contém: pré-requisitos, como rodar localmente (passo a passo), como configurar o Supabase e como fazer deploy",
+            "Aplicação sobe corretamente lendo variáveis de ambiente (sem .env hardcoded)"
+          ],
+          "files": [
+            ".env.example",
+            "backend/Procfile",
+            "README.md"
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "S3-T06",
+          "title": "Realizar testes end-to-end manuais e corrigir bugs",
+          "description": "Executar o fluxo completo: preencher formulário → enviar → verificar no Supabase → abrir painel → exportar CSV → abrir no Excel. Registrar e corrigir qualquer bug encontrado.",
+          "type": "testing",
+          "priority": "high",
+          "estimateHours": 2,
+          "dependsOn": ["S3-T01", "S3-T02", "S3-T03", "S3-T04"],
+          "acceptanceCriteria": [
+            "Fluxo completo de cadastro executado sem erros em Chrome e Safari mobile",
+            "Indicação aparece corretamente no painel após cadastro (sem recarregar a página manualmente)",
+            "CSV exportado abre corretamente no Excel com acentos preservados",
+            "Teste com CNPJ/CPF inválido: formulário não permite envio",
+            "Teste com backend offline: mensagem de erro amigável exibida ao usuário"
+          ],
+          "files": [],
+          "status": "todo"
+        },
+        {
+          "id": "S3-T07",
+          "title": "Deploy da aplicação e validação em produção",
+          "description": "Fazer deploy do backend (Railway ou Render) e do frontend estático (Netlify ou Vercel). Configurar variáveis de ambiente de produção. Testar o fluxo completo no ambiente de produção.",
+          "type": "devops",
+          "priority": "critical",
+          "estimateHours": 3,
+          "dependsOn": ["S3-T05", "S3-T06"],
+          "acceptanceCriteria": [
+            "Backend acessível via URL pública HTTPS",
+            "Frontend acessível via URL pública HTTPS",
+            "CORS configurado corretamente (frontend consegue chamar o backend em produção)",
+            "Fluxo completo testado em produção: cadastro → painel → CSV",
+            "Link de acesso compartilhado com os executivos comerciais da Blu para validação"
+          ],
+          "files": [],
+          "status": "todo"
+        }
+      ]
+    }
+  ],
+  "backlog": [
+    {
+      "id": "BK-01",
+      "title": "Autenticação com SSO Blu",
+      "description": "Login com conta corporativa da Blu (Google Workspace ou Azure AD) para restringir acesso apenas a funcionários.",
+      "priority": "medium",
+      "estimateHours": 8,
+      "status": "backlog"
+    },
+    {
+      "id": "BK-02",
+      "title": "Notificações automáticas de nova indicação",
+      "description": "Enviar e-mail ou mensagem no Slack para o time comercial quando uma nova indicação for cadastrada.",
+      "priority": "medium",
+      "estimateHours": 4,
+      "status": "backlog"
+    },
+    {
+      "id": "BK-03",
+      "title": "Dashboard com métricas de engajamento",
+      "description": "Painel com gráficos: indicações por executivo, por indústria, por período, taxa de conversão.",
+      "priority": "low",
+      "estimateHours": 12,
+      "status": "backlog"
+    },
+    {
+      "id": "BK-04",
+      "title": "Campo de status da indicação",
+      "description": "Adicionar status ao pipeline: Indicado → Em contato → Convertido → Perdido. Com histórico de mudanças.",
+      "priority": "high",
+      "estimateHours": 6,
+      "status": "backlog"
+    },
+    {
+      "id": "BK-05",
+      "title": "Integração com CRM",
+      "description": "Sincronizar indicações com o CRM em uso na Blu (ex: Salesforce, HubSpot) automaticamente ao cadastrar.",
+      "priority": "low",
+      "estimateHours": 16,
+      "status": "backlog"
+    }
+  ]
+}

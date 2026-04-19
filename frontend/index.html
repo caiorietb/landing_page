@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Blu — Engajamento Comercial</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="js/validacao.js"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="js/formulario.js"></script>
+</head>
+
+<body class="bg-gray-50 min-h-screen font-sans">
+
+  <!-- HEADER -->
+  <header class="bg-blue-700 text-white py-5 px-6 shadow">
+    <div class="max-w-3xl mx-auto flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl font-bold tracking-tight">Blu · Engajamento Comercial</h1>
+        <p class="text-blue-200 text-sm mt-1">Cadastro de indicações de varejistas</p>
+      </div>
+      <nav class="text-sm">
+        <a href="index.html" class="px-3 py-1.5 rounded bg-blue-800 font-semibold">Formulário</a>
+        <a href="painel.html" class="px-3 py-1.5 rounded hover:bg-blue-800">Painel</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-2xl mx-auto px-4 py-10" x-data="formularioIndicacao()" x-init="init()">
+
+    <!-- MENSAGENS DE FEEDBACK -->
+    <div x-show="msgSucesso" x-transition
+         class="bg-green-100 border border-green-400 text-green-800 rounded-lg px-5 py-4 mb-6">
+      ✅ Indicação cadastrada com sucesso!
+    </div>
+
+    <div x-show="msgErro" x-transition
+         class="bg-red-100 border border-red-400 text-red-800 rounded-lg px-5 py-4 mb-6">
+      ❌ <span x-text="msgErro"></span>
+    </div>
+
+    <!-- FORMULÁRIO -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
+      <h2 class="text-lg font-semibold text-gray-800 mb-6">Nova Indicação</h2>
+
+      <form @submit.prevent="enviar()" class="space-y-5" novalidate>
+
+        <!-- Executivo -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">
+            Seu nome ou e-mail <span class="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            x-model="form.executivo"
+            @blur="tocarCampo('executivo')"
+            placeholder="Ex: João Silva ou joao@blu.com.br"
+            :class="erro('executivo') ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'"
+            class="w-full border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2"
+          />
+          <p x-show="erro('executivo')" class="text-red-600 text-xs mt-1" x-text="erro('executivo')"></p>
+        </div>
+
+        <!-- CNPJ Indústria -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">
+            CNPJ da Indústria indicante <span class="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            x-model="form.cnpj_industria"
+            @input="form.cnpj_industria = Validacao.mascararCNPJ($event.target.value)"
+            @blur="tocarCampo('cnpj_industria')"
+            placeholder="00.000.000/0001-00"
+            inputmode="numeric"
+            maxlength="18"
+            :class="erro('cnpj_industria') ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'"
+            class="w-full border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2"
+          />
+          <p x-show="erro('cnpj_industria')" class="text-red-600 text-xs mt-1" x-text="erro('cnpj_industria')"></p>
+        </div>
+
+        <!-- Documento Representante (CPF ou CNPJ) -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">
+            CPF ou CNPJ do Representante Comercial <span class="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            x-model="form.doc_representante"
+            @input="form.doc_representante = Validacao.mascararDocumento($event.target.value)"
+            @blur="tocarCampo('doc_representante')"
+            placeholder="CPF (000.000.000-00) ou CNPJ"
+            inputmode="numeric"
+            maxlength="18"
+            :class="erro('doc_representante') ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'"
+            class="w-full border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2"
+          />
+          <p class="text-xs text-gray-500 mt-1"
+             x-show="Validacao.tipoDocumento(form.doc_representante) && !erro('doc_representante')">
+            Detectado: <span x-text="Validacao.tipoDocumento(form.doc_representante)"></span>
+          </p>
+          <p x-show="erro('doc_representante')" class="text-red-600 text-xs mt-1" x-text="erro('doc_representante')"></p>
+        </div>
+
+        <!-- CNPJs Varejistas (campo dinâmico) -->
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-sm font-medium text-gray-700">
+              CNPJs dos Varejistas <span class="text-red-500">*</span>
+            </label>
+            <span class="text-xs text-gray-500" x-text="`${form.varejistas.length}/20`"></span>
+          </div>
+          <p class="text-xs text-gray-500 mb-2">Mínimo 1, máximo 20. Clique em + para adicionar outro.</p>
+
+          <div class="space-y-2 max-h-64 overflow-y-auto pr-1" x-ref="listaVarejistas">
+            <template x-for="(cnpj, idx) in form.varejistas" :key="idx">
+              <div class="flex gap-2">
+                <div class="flex-1">
+                  <input
+                    type="text"
+                    :value="form.varejistas[idx]"
+                    @input="form.varejistas[idx] = Validacao.mascararCNPJ($event.target.value)"
+                    @blur="tocarVarejista(idx)"
+                    placeholder="00.000.000/0001-00"
+                    inputmode="numeric"
+                    maxlength="18"
+                    :class="erroVarejista(idx) ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'"
+                    class="w-full border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2"
+                  />
+                  <p x-show="erroVarejista(idx)" class="text-red-600 text-xs mt-1" x-text="erroVarejista(idx)"></p>
+                </div>
+                <button
+                  type="button"
+                  @click="removerVarejista(idx)"
+                  :disabled="form.varejistas.length <= 1"
+                  class="shrink-0 w-10 h-10 rounded-lg border border-gray-300 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Remover varejista"
+                >✕</button>
+              </div>
+            </template>
+          </div>
+
+          <button
+            type="button"
+            @click="adicionarVarejista()"
+            :disabled="form.varejistas.length >= 20"
+            class="mt-2 text-sm text-blue-700 hover:text-blue-900 font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+          >+ Adicionar varejista</button>
+        </div>
+
+        <!-- Detalhes -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">
+            Detalhes da negociação
+          </label>
+          <textarea
+            x-model="form.detalhes"
+            rows="3"
+            placeholder="Contexto da indicação, histórico, observações..."
+            class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+          ></textarea>
+        </div>
+
+        <!-- Botão enviar -->
+        <button
+          type="submit"
+          :disabled="enviando"
+          class="w-full bg-blue-700 hover:bg-blue-800 text-white font-semibold py-3 rounded-lg transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          <span x-show="!enviando">Enviar Indicação</span>
+          <span x-show="enviando">Enviando...</span>
+        </button>
+
+        <p x-show="tentouEnviar && !formValido()" class="text-red-600 text-xs text-center">
+          Corrija os campos destacados antes de enviar.
+        </p>
+
+      </form>
+    </div>
+  </main>
+
+</body>
+</html>
