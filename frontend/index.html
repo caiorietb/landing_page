@@ -3,183 +3,543 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Blu — Engajamento Comercial</title>
+  <title>Blu · Conexões — Indicação de Varejo</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            blu: {
+              50:  "#eff6ff",
+              100: "#dbeafe",
+              500: "#3b82f6",
+              600: "#2563eb",
+              700: "#1d4ed8",
+              800: "#1e40af",
+              900: "#1e3a8a",
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
   <script src="js/validacao.js"></script>
   <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <script defer src="js/formulario.js"></script>
+
+  <style>
+    [x-cloak] { display: none !important; }
+    /* Subtle scroll for long select lists */
+    .scroll-thin::-webkit-scrollbar { width: 8px; }
+    .scroll-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  </style>
 </head>
 
-<body class="bg-gray-50 min-h-screen font-sans">
+<body class="bg-gradient-to-br from-slate-50 to-blue-50/30 min-h-screen font-sans text-slate-800 antialiased"
+      x-data="formularioIndicacao()" x-init="init()" x-cloak>
 
-  <!-- HEADER -->
-  <header class="bg-blue-700 text-white py-5 px-6 shadow">
-    <div class="max-w-3xl mx-auto flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-bold tracking-tight">Blu · Engajamento Comercial</h1>
-        <p class="text-blue-200 text-sm mt-1">Cadastro de indicações de varejistas</p>
+  <!-- ═══════════════════════════════════════════════════════════════════
+       HEADER
+       ═══════════════════════════════════════════════════════════════════ -->
+  <header class="bg-blu-700 text-white shadow-lg">
+    <div class="max-w-4xl mx-auto flex items-center justify-between px-6 py-5">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center font-bold text-lg">B</div>
+        <div>
+          <h1 class="text-xl font-bold tracking-tight">Conexões</h1>
+          <p class="text-blu-100 text-xs">Indicação de varejo · Blu IP</p>
+        </div>
       </div>
-      <nav class="text-sm">
-        <a href="index.html" class="px-3 py-1.5 rounded bg-blue-800 font-semibold">Formulário</a>
-        <a href="painel.html" class="px-3 py-1.5 rounded hover:bg-blue-800">Painel</a>
+      <nav class="text-sm flex gap-1">
+        <a href="index.html" class="px-3 py-1.5 rounded bg-white/15 font-semibold">Indicar</a>
+        <a href="painel.html" class="px-3 py-1.5 rounded hover:bg-white/10 transition">Painel</a>
       </nav>
     </div>
   </header>
 
-  <main class="max-w-2xl mx-auto px-4 py-10" x-data="formularioIndicacao()" x-init="init()">
+  <!-- ═══════════════════════════════════════════════════════════════════
+       TOAST (feedback de envio)
+       ═══════════════════════════════════════════════════════════════════ -->
+  <div x-show="toast.visible" x-transition
+       :class="toast.tipo === 'success'
+               ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+               : toast.tipo === 'warn'
+               ? 'bg-amber-50 border-amber-200 text-amber-800'
+               : 'bg-rose-50 border-rose-200 text-rose-800'"
+       class="fixed top-24 left-1/2 -translate-x-1/2 z-50 max-w-md w-[92%] shadow-lg border rounded-xl px-5 py-4 text-sm flex items-start gap-3">
+    <div class="mt-0.5" x-text="toast.tipo === 'success' ? '✓' : toast.tipo === 'warn' ? '!' : '×'"></div>
+    <div class="flex-1">
+      <p class="font-semibold" x-text="toast.titulo"></p>
+      <p class="text-xs opacity-90 mt-0.5" x-text="toast.msg" x-show="toast.msg"></p>
+    </div>
+    <button @click="toast.visible = false" class="opacity-60 hover:opacity-100">✕</button>
+  </div>
 
-    <!-- MENSAGENS DE FEEDBACK -->
-    <div x-show="msgSucesso" x-transition
-         class="bg-green-100 border border-green-400 text-green-800 rounded-lg px-5 py-4 mb-6">
-      ✅ Indicação cadastrada com sucesso!
+  <!-- ═══════════════════════════════════════════════════════════════════
+       MAIN FORM
+       ═══════════════════════════════════════════════════════════════════ -->
+  <main class="max-w-3xl mx-auto px-4 pt-8 pb-32">
+
+    <!-- ── Stepper minimalista ─────────────────────────────────────────── -->
+    <div class="flex items-center gap-2 text-xs text-slate-500 mb-6">
+      <span class="px-2 py-1 rounded-full bg-blu-100 text-blu-700 font-semibold">1. Identificação</span>
+      <span>›</span>
+      <span class="px-2 py-1 rounded-full bg-slate-100 font-medium">2. Participantes</span>
+      <span>›</span>
+      <span class="px-2 py-1 rounded-full bg-slate-100 font-medium">3. Lojistas</span>
     </div>
 
-    <div x-show="msgErro" x-transition
-         class="bg-red-100 border border-red-400 text-red-800 rounded-lg px-5 py-4 mb-6">
-      ❌ <span x-text="msgErro"></span>
-    </div>
+    <form @submit.prevent="enviar()" novalidate class="space-y-6">
 
-    <!-- FORMULÁRIO -->
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-      <h2 class="text-lg font-semibold text-gray-800 mb-6">Nova Indicação</h2>
+      <!-- ═══════════════════════════════════════════════════════════════
+           SEÇÃO 1 — IDENTIFICAÇÃO
+           ═══════════════════════════════════════════════════════════════ -->
+      <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8">
+        <header class="flex items-baseline justify-between mb-5 pb-4 border-b border-slate-100">
+          <h2 class="text-lg font-semibold">1 · Identificação</h2>
+          <span class="text-xs text-slate-400">Quem está indicando e para qual fornecedor</span>
+        </header>
 
-      <form @submit.prevent="enviar()" class="space-y-5" novalidate>
-
-        <!-- Executivo -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">
-            Seu nome ou e-mail <span class="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            x-model="form.executivo"
-            @blur="tocarCampo('executivo')"
-            placeholder="Ex: João Silva ou joao@blu.com.br"
-            :class="erro('executivo') ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'"
-            class="w-full border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2"
-          />
-          <p x-show="erro('executivo')" class="text-red-600 text-xs mt-1" x-text="erro('executivo')"></p>
-        </div>
-
-        <!-- CNPJ Indústria -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">
-            CNPJ da Indústria indicante <span class="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            x-model="form.cnpj_industria"
-            @input="form.cnpj_industria = Validacao.mascararCNPJ($event.target.value)"
-            @blur="tocarCampo('cnpj_industria')"
-            placeholder="00.000.000/0001-00"
-            inputmode="numeric"
-            maxlength="18"
-            :class="erro('cnpj_industria') ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'"
-            class="w-full border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2"
-          />
-          <p x-show="erro('cnpj_industria')" class="text-red-600 text-xs mt-1" x-text="erro('cnpj_industria')"></p>
-        </div>
-
-        <!-- Documento Representante (CPF ou CNPJ) -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">
-            CPF ou CNPJ do Representante Comercial <span class="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            x-model="form.doc_representante"
-            @input="form.doc_representante = Validacao.mascararDocumento($event.target.value)"
-            @blur="tocarCampo('doc_representante')"
-            placeholder="CPF (000.000.000-00) ou CNPJ"
-            inputmode="numeric"
-            maxlength="18"
-            :class="erro('doc_representante') ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'"
-            class="w-full border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2"
-          />
-          <p class="text-xs text-gray-500 mt-1"
-             x-show="Validacao.tipoDocumento(form.doc_representante) && !erro('doc_representante')">
-            Detectado: <span x-text="Validacao.tipoDocumento(form.doc_representante)"></span>
-          </p>
-          <p x-show="erro('doc_representante')" class="text-red-600 text-xs mt-1" x-text="erro('doc_representante')"></p>
-        </div>
-
-        <!-- CNPJs Varejistas (campo dinâmico) -->
-        <div>
-          <div class="flex items-center justify-between mb-1">
-            <label class="block text-sm font-medium text-gray-700">
-              CNPJs dos Varejistas <span class="text-red-500">*</span>
+        <div class="grid sm:grid-cols-2 gap-5">
+          <!-- Executivo nome + email -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wide mb-1.5">
+              Seu nome <span class="text-rose-500">*</span>
             </label>
-            <span class="text-xs text-gray-500" x-text="`${form.varejistas.length}/20`"></span>
+            <input type="text" x-model="form.executivo.nome"
+                   @blur="marcar('executivo.nome')"
+                   placeholder="João Silva"
+                   :class="erroCampo('executivo.nome') ? 'border-rose-400 ring-rose-100' : 'border-slate-300 focus:ring-blu-100'"
+                   class="w-full border rounded-lg px-3.5 py-2.5 text-sm outline-none focus:border-blu-500 focus:ring-4 transition" />
+            <p x-show="erroCampo('executivo.nome')" class="text-rose-600 text-xs mt-1" x-text="erroCampo('executivo.nome')"></p>
           </div>
-          <p class="text-xs text-gray-500 mb-2">Mínimo 1, máximo 20. Clique em + para adicionar outro.</p>
 
-          <div class="space-y-2 max-h-64 overflow-y-auto pr-1" x-ref="listaVarejistas">
-            <template x-for="(cnpj, idx) in form.varejistas" :key="idx">
-              <div class="flex gap-2">
-                <div class="flex-1">
-                  <input
-                    type="text"
-                    :value="form.varejistas[idx]"
-                    @input="form.varejistas[idx] = Validacao.mascararCNPJ($event.target.value)"
-                    @blur="tocarVarejista(idx)"
-                    placeholder="00.000.000/0001-00"
-                    inputmode="numeric"
-                    maxlength="18"
-                    :class="erroVarejista(idx) ? 'border-red-400 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'"
-                    class="w-full border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2"
-                  />
-                  <p x-show="erroVarejista(idx)" class="text-red-600 text-xs mt-1" x-text="erroVarejista(idx)"></p>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wide mb-1.5">
+              Seu e-mail corporativo <span class="text-rose-500">*</span>
+            </label>
+            <input type="email" x-model="form.executivo.email"
+                   @blur="marcar('executivo.email')"
+                   placeholder="voce@blu.com.br"
+                   :class="erroCampo('executivo.email') ? 'border-rose-400 ring-rose-100' : 'border-slate-300 focus:ring-blu-100'"
+                   class="w-full border rounded-lg px-3.5 py-2.5 text-sm outline-none focus:border-blu-500 focus:ring-4 transition" />
+            <p x-show="erroCampo('executivo.email')" class="text-rose-600 text-xs mt-1" x-text="erroCampo('executivo.email')"></p>
+          </div>
+        </div>
+
+        <!-- Fornecedor (autocomplete) -->
+        <div class="mt-5 relative">
+          <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wide mb-1.5">
+            Fornecedor (indústria) <span class="text-rose-500">*</span>
+          </label>
+          <div class="relative">
+            <input type="text" x-model="fornecedorBusca"
+                   @focus="fornecedorAberto = true"
+                   @blur="setTimeout(() => fornecedorAberto = false, 180); marcar('fornecedor')"
+                   placeholder="Digite código, razão social ou CNPJ"
+                   :class="erroCampo('fornecedor') ? 'border-rose-400 ring-rose-100' : 'border-slate-300 focus:ring-blu-100'"
+                   class="w-full border rounded-lg px-3.5 py-2.5 text-sm outline-none focus:border-blu-500 focus:ring-4 transition pr-10" />
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs" x-text="fornecedoresFiltrados().length + ' opções'"></span>
+          </div>
+
+          <!-- Dropdown -->
+          <div x-show="fornecedorAberto && fornecedoresFiltrados().length > 0" x-transition
+               class="absolute z-30 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-72 overflow-y-auto scroll-thin">
+            <template x-for="f in fornecedoresFiltrados().slice(0, 40)" :key="f.id || f.codigo">
+              <button type="button" @mousedown.prevent="selecionarFornecedor(f)"
+                      class="w-full text-left px-4 py-2.5 text-sm hover:bg-blu-50 border-b border-slate-50 last:border-0">
+                <div class="font-medium text-slate-800">
+                  <span class="text-blu-700 font-mono" x-text="f.codigo"></span>
+                  · <span x-text="f.razao_social"></span>
+                  <span class="text-slate-400" x-show="f.apelido" x-text="'(' + f.apelido + ')'"></span>
                 </div>
-                <button
-                  type="button"
-                  @click="removerVarejista(idx)"
-                  :disabled="form.varejistas.length <= 1"
-                  class="shrink-0 w-10 h-10 rounded-lg border border-gray-300 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-300 disabled:opacity-40 disabled:cursor-not-allowed"
-                  title="Remover varejista"
-                >✕</button>
-              </div>
+                <div class="text-xs text-slate-500 font-mono" x-text="Validacao.mascararCNPJ(f.cnpj)"></div>
+              </button>
             </template>
           </div>
 
-          <button
-            type="button"
-            @click="adicionarVarejista()"
-            :disabled="form.varejistas.length >= 20"
-            class="mt-2 text-sm text-blue-700 hover:text-blue-900 font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-          >+ Adicionar varejista</button>
+          <!-- Chip do selecionado -->
+          <div x-show="form.fornecedor.id" class="mt-2 flex items-center gap-2 text-xs">
+            <span class="inline-flex items-center gap-1 bg-blu-50 text-blu-700 px-2.5 py-1 rounded-full font-semibold">
+              <span class="font-mono" x-text="form.fornecedor.codigo"></span>
+              <span x-text="form.fornecedor.razao_social"></span>
+            </span>
+            <button type="button" @click="limparFornecedor()" class="text-slate-500 hover:text-rose-600">trocar</button>
+          </div>
+          <p x-show="erroCampo('fornecedor')" class="text-rose-600 text-xs mt-1" x-text="erroCampo('fornecedor')"></p>
         </div>
 
-        <!-- Detalhes -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">
-            Detalhes da negociação
+        <div class="grid sm:grid-cols-2 gap-5 mt-5">
+          <!-- Tipo -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wide mb-1.5">
+              O que deseja indicar? <span class="text-rose-500">*</span>
+            </label>
+            <div class="grid grid-cols-2 gap-2">
+              <label class="border rounded-lg px-3 py-2.5 text-sm cursor-pointer text-center transition"
+                     :class="form.tipo === 'varejo' ? 'bg-blu-600 text-white border-blu-600' : 'bg-white border-slate-300 hover:border-blu-400'">
+                <input type="radio" value="varejo" x-model="form.tipo" class="hidden" />
+                Varejo
+              </label>
+              <label class="border rounded-lg px-3 py-2.5 text-sm cursor-pointer text-center transition"
+                     :class="form.tipo === 'representante' ? 'bg-blu-600 text-white border-blu-600' : 'bg-white border-slate-300 hover:border-blu-400'">
+                <input type="radio" value="representante" x-model="form.tipo" class="hidden" />
+                Representante
+              </label>
+            </div>
+          </div>
+
+          <!-- É feira? -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wide mb-1.5">
+              Indicação em feira? <span class="text-rose-500">*</span>
+            </label>
+            <div class="grid grid-cols-2 gap-2">
+              <label class="border rounded-lg px-3 py-2.5 text-sm cursor-pointer text-center transition"
+                     :class="!form.eh_feira ? 'bg-slate-800 text-white border-slate-800' : 'bg-white border-slate-300 hover:border-slate-500'">
+                <input type="radio" :value="false" x-model="form.eh_feira" class="hidden" />
+                Não
+              </label>
+              <label class="border rounded-lg px-3 py-2.5 text-sm cursor-pointer text-center transition"
+                     :class="form.eh_feira ? 'bg-amber-500 text-white border-amber-500' : 'bg-white border-slate-300 hover:border-amber-400'">
+                <input type="radio" :value="true" x-model="form.eh_feira" class="hidden" />
+                Sim
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Nome da feira (progressive disclosure) -->
+        <div x-show="form.eh_feira" x-transition class="mt-5">
+          <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wide mb-1.5">
+            Qual feira? <span class="text-rose-500">*</span>
           </label>
-          <textarea
-            x-model="form.detalhes"
-            rows="3"
-            placeholder="Contexto da indicação, histórico, observações..."
-            class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-          ></textarea>
+          <select x-model="form.feira_nome"
+                  class="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm bg-white focus:border-blu-500 focus:ring-4 focus:ring-blu-100 outline-none transition">
+            <option value="">Selecione a feira...</option>
+            <template x-for="f in feiras" :key="f.id || f.nome">
+              <option :value="f.nome" x-text="f.nome"></option>
+            </template>
+          </select>
+          <p x-show="erroCampo('feira_nome')" class="text-rose-600 text-xs mt-1" x-text="erroCampo('feira_nome')"></p>
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           SEÇÃO 2 — PARTICIPANTES
+           ═══════════════════════════════════════════════════════════════ -->
+      <section x-show="form.tipo === 'varejo'" x-transition
+               class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8">
+        <header class="flex items-baseline justify-between mb-5 pb-4 border-b border-slate-100">
+          <h2 class="text-lg font-semibold">2 · Participantes</h2>
+          <span class="text-xs text-slate-400">Quem participou da indicação</span>
+        </header>
+
+        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">
+          Composição <span class="text-rose-500">*</span>
+        </label>
+        <div class="grid gap-2">
+          <template x-for="opt in opcoesParticipantes" :key="opt.value">
+            <label class="border rounded-lg px-4 py-3 text-sm cursor-pointer flex items-center gap-3 transition"
+                   :class="form.participantes === opt.value
+                           ? 'border-blu-500 bg-blu-50/60 ring-2 ring-blu-100'
+                           : 'border-slate-200 hover:border-blu-300 hover:bg-slate-50'">
+              <input type="radio" :value="opt.value" x-model="form.participantes" class="accent-blu-600" />
+              <span x-text="opt.label"></span>
+            </label>
+          </template>
+        </div>
+        <p x-show="erroCampo('participantes')" class="text-rose-600 text-xs mt-1" x-text="erroCampo('participantes')"></p>
+
+        <!-- Gestor (condicional) -->
+        <div x-show="precisaGestor" x-transition class="mt-6 pt-5 border-t border-slate-100">
+          <h3 class="text-sm font-semibold text-slate-800 mb-3">Dados do Gestor da indústria</h3>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Nome <span class="text-rose-500">*</span></label>
+              <input type="text" x-model="form.gestor.nome" @blur="marcar('gestor.nome')"
+                     :class="erroCampo('gestor.nome') ? 'border-rose-400' : 'border-slate-300'"
+                     class="w-full border rounded-lg px-3 py-2 text-sm focus:border-blu-500 focus:ring-4 focus:ring-blu-100 outline-none" />
+              <p x-show="erroCampo('gestor.nome')" class="text-rose-600 text-xs mt-1" x-text="erroCampo('gestor.nome')"></p>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">E-mail <span class="text-rose-500">*</span></label>
+              <input type="email" x-model="form.gestor.email" @blur="marcar('gestor.email')"
+                     :class="erroCampo('gestor.email') ? 'border-rose-400' : 'border-slate-300'"
+                     class="w-full border rounded-lg px-3 py-2 text-sm focus:border-blu-500 focus:ring-4 focus:ring-blu-100 outline-none" />
+              <p x-show="erroCampo('gestor.email')" class="text-rose-600 text-xs mt-1" x-text="erroCampo('gestor.email')"></p>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Celular</label>
+              <input type="tel" :value="form.gestor.celular"
+                     @input="form.gestor.celular = Validacao.mascararTelefone($event.target.value)"
+                     placeholder="(11) 99999-9999" maxlength="16" inputmode="tel"
+                     class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blu-500 focus:ring-4 focus:ring-blu-100 outline-none" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Cargo</label>
+              <select x-model="form.gestor.cargo"
+                      class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:border-blu-500 focus:ring-4 focus:ring-blu-100 outline-none">
+                <option value="">Selecione...</option>
+                <template x-for="c in opcoesCargo" :key="c.value">
+                  <option :value="c.value" x-text="c.label"></option>
+                </template>
+              </select>
+            </div>
+          </div>
         </div>
 
-        <!-- Botão enviar -->
-        <button
-          type="submit"
-          :disabled="enviando"
-          class="w-full bg-blue-700 hover:bg-blue-800 text-white font-semibold py-3 rounded-lg transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          <span x-show="!enviando">Enviar Indicação</span>
-          <span x-show="enviando">Enviando...</span>
+        <!-- Representante (condicional) -->
+        <div x-show="precisaRep" x-transition class="mt-6 pt-5 border-t border-slate-100">
+          <h3 class="text-sm font-semibold text-slate-800 mb-3">Dados do Representante (REP)</h3>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Nome <span class="text-rose-500">*</span></label>
+              <input type="text" x-model="form.representante.nome" @blur="marcar('representante.nome')"
+                     :class="erroCampo('representante.nome') ? 'border-rose-400' : 'border-slate-300'"
+                     class="w-full border rounded-lg px-3 py-2 text-sm focus:border-blu-500 focus:ring-4 focus:ring-blu-100 outline-none" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">CPF ou CNPJ <span class="text-rose-500">*</span></label>
+              <input type="text" x-model="form.representante.documento"
+                     @input="form.representante.documento = Validacao.mascararDocumento($event.target.value)"
+                     @blur="marcar('representante.documento')"
+                     placeholder="000.000.000-00"
+                     :class="erroCampo('representante.documento') ? 'border-rose-400' : 'border-slate-300'"
+                     class="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:border-blu-500 focus:ring-4 focus:ring-blu-100 outline-none" />
+              <p x-show="erroCampo('representante.documento')" class="text-rose-600 text-xs mt-1" x-text="erroCampo('representante.documento')"></p>
+              <p x-show="Validacao.tipoDocumento(form.representante.documento) && !erroCampo('representante.documento')"
+                 class="text-emerald-700 text-xs mt-1">
+                Detectado: <span x-text="Validacao.tipoDocumento(form.representante.documento)"></span>
+              </p>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">E-mail</label>
+              <input type="email" x-model="form.representante.email"
+                     class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blu-500 focus:ring-4 focus:ring-blu-100 outline-none" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Celular</label>
+              <input type="tel" :value="form.representante.celular"
+                     @input="form.representante.celular = Validacao.mascararTelefone($event.target.value)"
+                     placeholder="(11) 99999-9999" maxlength="16" inputmode="tel"
+                     class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blu-500 focus:ring-4 focus:ring-blu-100 outline-none" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Tipo de bonificação</label>
+              <div class="flex gap-2">
+                <label class="flex-1 border rounded-lg px-3 py-2 text-sm cursor-pointer text-center transition"
+                       :class="form.representante.tipo_bonificacao === 'RPA' ? 'bg-blu-600 text-white border-blu-600' : 'border-slate-300'">
+                  <input type="radio" value="RPA" x-model="form.representante.tipo_bonificacao" class="hidden" />
+                  RPA
+                </label>
+                <label class="flex-1 border rounded-lg px-3 py-2 text-sm cursor-pointer text-center transition"
+                       :class="form.representante.tipo_bonificacao === 'NotaFiscal' ? 'bg-blu-600 text-white border-blu-600' : 'border-slate-300'">
+                  <input type="radio" value="NotaFiscal" x-model="form.representante.tipo_bonificacao" class="hidden" />
+                  Nota Fiscal
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Prioridade -->
+        <div class="mt-6 pt-5 border-t border-slate-100">
+          <h3 class="text-sm font-semibold text-slate-800 mb-3">Prioridade de contato</h3>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <label class="border rounded-lg px-4 py-3 text-sm cursor-pointer flex items-center gap-3 transition"
+                   :class="form.prioridade === 'imediato' ? 'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-100' : 'border-slate-200 hover:border-emerald-300'">
+              <input type="radio" value="imediato" x-model="form.prioridade" class="accent-emerald-600" />
+              <div>
+                <p class="font-medium">Imediato</p>
+                <p class="text-xs text-slate-500">Time comercial entra em contato ASAP</p>
+              </div>
+            </label>
+            <label class="border rounded-lg px-4 py-3 text-sm cursor-pointer flex items-center gap-3 transition"
+                   :class="form.prioridade === 'programado' ? 'border-blu-500 bg-blu-50/60 ring-2 ring-blu-100' : 'border-slate-200 hover:border-blu-300'">
+              <input type="radio" value="programado" x-model="form.prioridade" class="accent-blu-600" />
+              <div>
+                <p class="font-medium">Programado</p>
+                <p class="text-xs text-slate-500">Agendar para data específica</p>
+              </div>
+            </label>
+          </div>
+          <div x-show="form.prioridade === 'programado'" x-transition class="mt-3">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Data para contato <span class="text-rose-500">*</span></label>
+            <input type="date" x-model="form.data_contato"
+                   :min="hojeISO"
+                   :class="erroCampo('data_contato') ? 'border-rose-400' : 'border-slate-300'"
+                   class="border rounded-lg px-3 py-2 text-sm focus:border-blu-500 focus:ring-4 focus:ring-blu-100 outline-none" />
+            <p x-show="erroCampo('data_contato')" class="text-rose-600 text-xs mt-1" x-text="erroCampo('data_contato')"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           SEÇÃO 3 — LOJISTAS
+           ═══════════════════════════════════════════════════════════════ -->
+      <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8">
+        <header class="flex items-baseline justify-between mb-5 pb-4 border-b border-slate-100">
+          <h2 class="text-lg font-semibold">3 · Lojistas indicados</h2>
+          <span class="text-xs text-slate-400"><span x-text="form.lojistas.length"></span>/50</span>
+        </header>
+
+        <div class="space-y-4">
+          <template x-for="(loj, idx) in form.lojistas" :key="idx">
+            <article class="border border-slate-200 rounded-xl overflow-hidden"
+                     :class="lojistaTemErro(idx) ? 'border-rose-300' : ''">
+              <!-- Header do card -->
+              <div class="flex items-center justify-between bg-slate-50 px-4 py-2.5 cursor-pointer"
+                   @click="lojistaAberto = lojistaAberto === idx ? null : idx">
+                <div class="flex items-center gap-3">
+                  <span class="w-6 h-6 rounded-full bg-blu-600 text-white text-xs font-bold flex items-center justify-center" x-text="idx + 1"></span>
+                  <div>
+                    <p class="text-sm font-semibold" x-text="loj.nome_fantasia || loj.razao_social || 'Lojista ' + (idx + 1)"></p>
+                    <p class="text-xs text-slate-500 font-mono" x-text="loj.cnpj ? Validacao.mascararCNPJ(loj.cnpj) : 'CNPJ pendente'"></p>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span x-show="lojistaTemErro(idx)" class="text-xs text-rose-600 font-medium">!</span>
+                  <button type="button" @click.stop="removerLojista(idx)" x-show="form.lojistas.length > 1"
+                          class="text-slate-400 hover:text-rose-600 text-sm px-2">✕</button>
+                  <span class="text-slate-400 text-xs" x-text="lojistaAberto === idx ? '▲' : '▼'"></span>
+                </div>
+              </div>
+
+              <!-- Corpo do card -->
+              <div x-show="lojistaAberto === idx" x-transition class="p-4 grid sm:grid-cols-2 gap-4">
+                <div class="sm:col-span-2">
+                  <label class="block text-xs font-medium text-slate-600 mb-1">CNPJ do lojista <span class="text-rose-500">*</span></label>
+                  <input type="text" :value="loj.cnpj"
+                         @input="loj.cnpj = Validacao.mascararCNPJ($event.target.value)"
+                         @blur="marcarLojista(idx, 'cnpj')"
+                         placeholder="00.000.000/0001-00"
+                         maxlength="18" inputmode="numeric"
+                         :class="erroLojista(idx, 'cnpj') ? 'border-rose-400' : 'border-slate-300'"
+                         class="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:border-blu-500 focus:ring-4 focus:ring-blu-100 outline-none" />
+                  <p x-show="erroLojista(idx, 'cnpj')" class="text-rose-600 text-xs mt-1" x-text="erroLojista(idx, 'cnpj')"></p>
+                </div>
+
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">Razão social <span class="text-rose-500">*</span></label>
+                  <input type="text" x-model="loj.razao_social" @blur="marcarLojista(idx, 'razao_social')"
+                         :class="erroLojista(idx, 'razao_social') ? 'border-rose-400' : 'border-slate-300'"
+                         class="w-full border rounded-lg px-3 py-2 text-sm focus:border-blu-500 focus:ring-4 focus:ring-blu-100 outline-none" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">Nome fantasia <span class="text-rose-500">*</span></label>
+                  <input type="text" x-model="loj.nome_fantasia" @blur="marcarLojista(idx, 'nome_fantasia')"
+                         :class="erroLojista(idx, 'nome_fantasia') ? 'border-rose-400' : 'border-slate-300'"
+                         class="w-full border rounded-lg px-3 py-2 text-sm focus:border-blu-500 focus:ring-4 focus:ring-blu-100 outline-none" />
+                </div>
+
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">E-mail <span class="text-rose-500">*</span></label>
+                  <input type="email" x-model="loj.email" @blur="marcarLojista(idx, 'email')"
+                         :class="erroLojista(idx, 'email') ? 'border-rose-400' : 'border-slate-300'"
+                         class="w-full border rounded-lg px-3 py-2 text-sm focus:border-blu-500 focus:ring-4 focus:ring-blu-100 outline-none" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">WhatsApp <span class="text-rose-500">*</span></label>
+                  <input type="tel" :value="loj.whatsapp"
+                         @input="loj.whatsapp = Validacao.mascararTelefone($event.target.value)"
+                         @blur="marcarLojista(idx, 'whatsapp')"
+                         placeholder="(11) 99999-9999" maxlength="16" inputmode="tel"
+                         :class="erroLojista(idx, 'whatsapp') ? 'border-rose-400' : 'border-slate-300'"
+                         class="w-full border rounded-lg px-3 py-2 text-sm focus:border-blu-500 focus:ring-4 focus:ring-blu-100 outline-none" />
+                  <p x-show="erroLojista(idx, 'whatsapp')" class="text-rose-600 text-xs mt-1" x-text="erroLojista(idx, 'whatsapp')"></p>
+                  <p x-show="!erroLojista(idx, 'whatsapp') && ufPreview(idx)" class="text-slate-500 text-xs mt-1">
+                    DDD sugere UF: <span class="font-semibold text-blu-700" x-text="ufPreview(idx)"></span>
+                  </p>
+                </div>
+
+                <div class="sm:col-span-2">
+                  <label class="block text-xs font-medium text-slate-600 mb-1">Tipo de produto indicado <span class="text-rose-500">*</span></label>
+                  <div class="grid grid-cols-3 gap-2">
+                    <template x-for="p in ['PagBlu', 'CredBlu', 'Split']" :key="p">
+                      <label class="border rounded-lg px-3 py-2 text-sm cursor-pointer text-center transition font-semibold"
+                             :class="loj.tipo_produto === p ? 'bg-blu-600 text-white border-blu-600' : 'border-slate-300 hover:border-blu-400'">
+                        <input type="radio" :value="p" x-model="loj.tipo_produto" class="hidden" />
+                        <span x-text="p"></span>
+                      </label>
+                    </template>
+                  </div>
+                  <p x-show="erroLojista(idx, 'tipo_produto')" class="text-rose-600 text-xs mt-1" x-text="erroLojista(idx, 'tipo_produto')"></p>
+                </div>
+
+                <div class="sm:col-span-2">
+                  <label class="flex items-center gap-2 text-sm">
+                    <input type="checkbox" x-model="loj.condicao_especial" class="accent-blu-600" />
+                    Foi negociada condição especial?
+                  </label>
+                  <div x-show="loj.condicao_especial" x-transition class="mt-2">
+                    <textarea x-model="loj.condicao_especial_descricao" rows="2" maxlength="1000"
+                              placeholder="Descreva a condição..."
+                              class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blu-500 focus:ring-4 focus:ring-blu-100 outline-none resize-none"></textarea>
+                    <p class="text-xs text-slate-400 text-right" x-text="(loj.condicao_especial_descricao || '').length + '/1000'"></p>
+                  </div>
+                </div>
+
+                <div class="sm:col-span-2">
+                  <label class="block text-xs font-medium text-slate-600 mb-1">Observações (opcional)</label>
+                  <textarea x-model="loj.observacoes" rows="2" maxlength="1000"
+                            placeholder="Contexto, histórico, notas..."
+                            class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blu-500 focus:ring-4 focus:ring-blu-100 outline-none resize-none"></textarea>
+                  <p class="text-xs text-slate-400 text-right" x-text="(loj.observacoes || '').length + '/1000'"></p>
+                </div>
+              </div>
+            </article>
+          </template>
+        </div>
+
+        <button type="button" @click="adicionarLojista()"
+                :disabled="form.lojistas.length >= 50"
+                class="mt-4 w-full border-2 border-dashed border-slate-300 rounded-xl px-4 py-3 text-sm font-medium text-slate-600 hover:border-blu-400 hover:text-blu-700 hover:bg-blu-50/50 disabled:opacity-40 disabled:cursor-not-allowed transition">
+          + Adicionar lojista
         </button>
+      </section>
 
-        <p x-show="tentouEnviar && !formValido()" class="text-red-600 text-xs text-center">
-          Corrija os campos destacados antes de enviar.
-        </p>
+      <!-- ═══════════════════════════════════════════════════════════════
+           SUBMIT
+           ═══════════════════════════════════════════════════════════════ -->
+      <div class="sticky bottom-4 z-20">
+        <div class="bg-white/95 backdrop-blur border border-slate-200 rounded-2xl shadow-lg p-4 flex items-center justify-between gap-4">
+          <div class="text-xs text-slate-500 hidden sm:block">
+            <p x-show="formValido()" class="text-emerald-700 font-semibold">✓ Pronto para enviar</p>
+            <p x-show="!formValido() && tentouEnviar" class="text-rose-700">
+              Corrija os campos destacados<span x-show="lojistasPendentes() > 0"> · <span class="font-semibold" x-text="lojistasPendentes()"></span> lojista(s) pendente(s)</span>.
+            </p>
+            <p x-show="!formValido() && !tentouEnviar">Preencha os campos obrigatórios.</p>
+          </div>
+          <button type="submit" :disabled="enviando"
+                  class="flex-1 sm:flex-none bg-blu-700 hover:bg-blu-800 active:bg-blu-900 text-white font-semibold px-8 py-3 rounded-xl text-sm shadow-md hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed transition">
+            <span x-show="!enviando">Enviar indicação</span>
+            <span x-show="enviando" class="inline-flex items-center gap-2">
+              <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+                <path d="M4 12a8 8 0 018-8" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+              </svg>
+              Enviando...
+            </span>
+          </button>
+        </div>
+      </div>
 
-      </form>
-    </div>
+    </form>
   </main>
+
+  <footer class="text-center text-xs text-slate-400 py-6">
+    Blu IP · Conexões · v2
+  </footer>
 
 </body>
 </html>

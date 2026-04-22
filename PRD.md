@@ -1,152 +1,314 @@
-# Product Requirements Document — Blu Engajamento Comercial
+# Product Requirements Document — Blu Engajamento Comercial (Conexões v2)
+
+> Documento ampliado após a leitura da documentação oficial do wiki
+> (ver `.claude/wiki_oficial.md`). Substitui a versão MVP de 3 sprints.
 
 ## Overview
 
-Ferramenta interna para executivos comerciais da Blu registrarem indicações de varejistas recebidas de indústrias parceiras. O objetivo é centralizar e organizar o pipeline do processo de Engajamento Comercial — a conversão de pagamentos via boleto para PagBlu, método de pagamento que utiliza recebíveis futuros de cartão de crédito gerados na POS da Blu.
+Plataforma interna para captura e roteamento de **indicações de varejo**
+recebidas de indústrias parceiras da Blu. Substitui os 4 workflows n8n
+atuais por uma stack Python (FastAPI) com **Supabase como source-of-truth**,
+mantendo HubSpot CRM, HubDBs e planilha Excel como **sinks** assíncronos.
+
+O produto é o Pipe de Conexões: converter pagamentos via boleto para
+PagBlu, usando recebíveis futuros de cartão de crédito na POS da Blu.
 
 ## Problem Statement
 
-Atualmente, as indicações de varejistas feitas pelas indústrias parceiras são registradas de forma descentralizada (planilhas, WhatsApp, e-mail), dificultando o acompanhamento do pipeline comercial e a rastreabilidade das indicações por executivo, indústria e representante. Isso gera perda de oportunidades e falta de visibilidade do processo.
+Os 4 workflows n8n hoje em produção sofrem com:
+
+1. **Duplicidade** de indicações (sem chave idempotente).
+2. **Datas em formatos inconsistentes** (fuso não normalizado).
+3. **Ausência de chave única estável** entre Excel, HubSpot e backend.
+4. **Data de contato pedida ao usuário**, em vez de `now()`.
+5. **Sem banco relacional** — só Excel + HubSpot, sem rastreabilidade.
+6. **Resolução de UF frágil** (quando BrasilAPI falha, roteamento fica ao léu).
+7. **Owner atribuído manualmente**, inconsistente entre executivos.
+8. **"Alto Potencial" subjetivo**, sem regra formal.
 
 ## Goals & Success Metrics
 
-- Centralizar 100% das indicações em um único sistema → zero indicações perdidas em planilhas avulsas
-- Reduzir o tempo de registro de uma indicação para menos de 2 minutos → formulário validado e enviado sem erros
-- Permitir que qualquer executivo acesse o painel de indicações em menos de 5 segundos → tempo de carregamento < 2s
-- Viabilizar exportação dos dados para análise comercial → CSV gerado corretamente com todos os campos
+- **Zero duplicatas** em produção (idempotency_key único).
+- **100% das indicações** com timestamp ISO-8601 UTC.
+- **Latência p95 do webhook < 800 ms**, mesmo com sinks assíncronos.
+- **Roteamento automático** de owner em ≥ 95% dos casos (regionalização).
+- **Rastreabilidade completa**: toda linha do Excel e todo Deal do HubSpot
+  apontam de volta para um `indicacoes.id` do Supabase.
+- **Auditoria**: 100% das mutações registradas em `audit_log`.
 
 ## Target Users
 
-**Executivos Comerciais da Blu** — profissionais de vendas internos que atuam no campo, visitam indústrias e varejistas, e são responsáveis pelo processo de engajamento. Têm conhecimento moderado de tecnologia, usam o sistema principalmente pelo celular ou notebook. Precisam de uma interface rápida e sem fricção para registrar indicações no momento da visita ou logo após.
+- **Executivos Comerciais da Blu** — preenchem a LP no mobile/notebook.
+- **RevOps / Admin** — usam WF2 (Cadastro REP/Gestor) e painel de listagem.
+- **Pipeline Managers** — consomem o pipeline "Conexões" no HubSpot.
 
 ## Scope
 
-### In Scope (MVP)
+### In Scope (produto completo)
 
-- Formulário de cadastro de indicação com todos os campos obrigatórios
-- Validação em tempo real de CNPJ e CPF (formato + dígitos verificadores)
-- Suporte a múltiplos CNPJs de varejistas por indicação
-- Registro automático da data/hora de cadastro
-- Painel de listagem das indicações (tabela com filtro e busca)
-- Exportação das indicações em CSV
-- Acesso por link interno sem autenticação complexa
+1. **Formulário público** em `https://blu.com.br/conexoes-indicacao-varejo`
+   com os 5 tipos de indicação, lojistas dinâmicos, feira, prioridade.
+2. **Endpoint `POST /indicacoes`** com idempotência SHA-256, validação
+   fiscal (CNPJ/CPF módulo 11), enfileiramento de sinks.
+3. **Persistência em Supabase** no modelo 3NF (10 tabelas) com
+   soft-delete, triggers `touch_updated_at`, RLS, view agregada.
+4. **Resolução automática de UF** (BrasilAPI → DDD → `INDEFINIDO`).
+5. **Regionalização** (UF → owner via tabela de configuração).
+6. **Classificação Alto Potencial** (VIP + produto + faturamento).
+7. **Integração HubSpot plug-and-play** (4 workflows como serviços Python).
+8. **Notificação Teams** em falhas críticas.
+9. **Sink Excel** append-only para backup offline.
+10. **Painel interno** (HTML) com filtros, busca e export CSV.
+11. **Observabilidade** (logs JSON estruturados + métricas).
+12. **Segurança** (CORS allowlist, rate limit, headers bloqueados, RLS).
 
-### Out of Scope (Futuro)
+### Out of Scope (por enquanto)
 
-- Login com SSO / autenticação por conta Blu
-- Notificações automáticas por e-mail ou Slack ao registrar indicação
-- Dashboard com métricas e gráficos de conversão
-- Integração com CRM (Salesforce, HubSpot)
-- Fluxo de aprovação ou status de andamento da indicação
-- App mobile nativo
+- App mobile nativo.
+- Dashboard BI (Metabase/Looker ficam em projeto separado).
+- Aprovação multi-nível de indicação.
+- Integração com ERP das indústrias.
+
+## Arquitetura
+
+```
+┌────────────────┐   POST /indicacoes   ┌─────────────────────────┐
+│   LP Conexões  │ ────────────────────▶│  FastAPI (backend)      │
+│ (Tailwind +    │                      │  ├─ schemas Pydantic    │
+│  Alpine.js)    │                      │  ├─ idempotency_key      │
+└────────────────┘                      │  ├─ services (regras)    │
+                                        │  └─ repositories (SB)    │
+                                        └────────────┬────────────┘
+                                                     │
+                                                     ▼
+                                        ┌─────────────────────────┐
+                                        │   Supabase (Postgres)   │
+                                        │   source-of-truth        │
+                                        │   + integration_events   │
+                                        └────────────┬────────────┘
+                                                     │ workers async
+                                 ┌───────────────────┼───────────────────┐
+                                 ▼                   ▼                   ▼
+                        ┌───────────────┐  ┌───────────────┐  ┌───────────────┐
+                        │ WF1/WF2/WF3   │  │ Excel (sink)  │  │ S3 / BrasilAPI│
+                        │ HubSpot CRM   │  │ append-only   │  │ enriquecimento│
+                        └───────────────┘  └───────────────┘  └───────────────┘
+```
+
+## Os 4 Workflows (espelho dos workflows n8n)
+
+| # | Workflow | Trigger | Descrição |
+|---|---|---|---|
+| **WF1** | Indicação Varejo | `POST /indicacoes` | Valida fornecedor + executivo, cria/atualiza GES/REP/Lojista, enfileira WF3. |
+| **WF2** | Cadastro REP/Gestor | `POST /admin/rep` e `POST /admin/ges` | Uso administrativo; cria custom objects sem criar Deal. |
+| **WF3** | Criação de Negócios | Event bus interno | Para cada lojista: resolve UF → cenário 1..6 → regionaliza → Alto Potencial → cria Deal + associações. |
+| **WF4** | Consulta REP/Gestor | `GET /admin/rep?q=` | Read-only para autocompletar formulários internos. |
+
+## Tipos de Indicação (5 cenários)
+
+| Cenário | `participantes` | Gestor? | REP? | Executivo Blu? |
+|---|---|---|---|---|
+| 1 | `apenas_gestor` | ✔︎ | — | — |
+| 2 | `gestor_e_representante` | ✔︎ | ✔︎ | — |
+| 3 | `gestor_e_vendas_interno` | ✔︎ | — | ✔︎ |
+| 4 | `apenas_representante` | — | ✔︎ | — |
+| 5 | `direta` | — | — | ✔︎ |
+
+Flag ortogonal `eh_feira=true` adiciona `feira_nome` e roteamento para
+pool de feiras.
 
 ## Functional Requirements
 
-### FR-01: Formulário de Indicação
+### FR-01: Formulário público (LP Conexões)
 
-**Description:** Formulário web com todos os campos necessários para registrar uma indicação de engajamento comercial.
+**Descrição:** Substitui a LP n8n, mantendo domínio `blu.com.br`.
+Stack: HTML5 + Tailwind + Alpine.js, Inter font, paleta Blu.
 
-**Campos:**
-- Nome do executivo Blu (texto) ou e-mail corporativo
-- CNPJ da indústria indicante (input com máscara)
-- CPF ou CNPJ do representante comercial da indústria (input com máscara, detecção automática por tamanho)
-- CNPJs dos varejistas indicados (campo dinâmico — adicionar/remover múltiplos)
-- Data de cadastro (preenchida automaticamente, não editável)
-- Detalhes da negociação (textarea livre, opcional)
+**Seções:**
 
-**Acceptance Criteria:**
-- [ ] Todos os campos obrigatórios bloqueiam o envio se vazios, com mensagem de erro inline
-- [ ] CNPJ e CPF são validados (formato e dígitos verificadores) antes do envio
-- [ ] É possível adicionar no mínimo 1 e no máximo 20 CNPJs de varejistas
-- [ ] Após envio bem-sucedido, o formulário é limpo e exibe mensagem de confirmação
-- [ ] O envio falha graciosamente com mensagem de erro se o backend estiver indisponível
-
-### FR-02: Validação de Documentos em Tempo Real
-
-**Description:** Validação de CNPJ e CPF no frontend (formato + algoritmo de dígitos verificadores) e no backend antes de gravar no banco.
+1. **Identificação** — executivo (nome+email), fornecedor (autocomplete
+   a partir do `GET /fornecedores`), tipo (`varejo`/`representante`),
+   feira (sim/não + select de `GET /feiras`).
+2. **Participantes** (só quando `tipo=varejo`) — radio de composição
+   (5 opções), dados do GES e/ou REP conforme composição, prioridade
+   (`imediato`/`programado` + data condicional).
+3. **Lojistas** — array dinâmico (1–50); cada item tem CNPJ, razão social,
+   nome fantasia, e-mail, WhatsApp, `tipo_produto` (PagBlu/CredBlu/Split),
+   condição especial (bool + descrição) e observações.
 
 **Acceptance Criteria:**
-- [ ] CNPJ é validado com o algoritmo oficial (módulo 11) assim que o campo perde o foco
-- [ ] CPF é validado com o algoritmo oficial (módulo 11) assim que o campo perde o foco
-- [ ] O tipo de documento (CPF vs CNPJ) do representante é detectado automaticamente pelo número de dígitos
-- [ ] Documentos inválidos exibem mensagem de erro vermelha abaixo do campo
-- [ ] O backend rejeita documentos inválidos com HTTP 422 mesmo que o frontend seja bypassado
 
-### FR-03: Painel de Indicações
+- [ ] CNPJ/CPF validados em tempo real (módulo 11) com feedback inline.
+- [ ] Detecção automática CPF vs CNPJ pelo número de dígitos.
+- [ ] Progressive disclosure: seção 2 só aparece em `tipo=varejo`;
+      `feira_nome` só aparece se `eh_feira=true`; `data_contato` só em
+      `prioridade=programado`.
+- [ ] Fornecedor e feiras vêm de endpoints (não hard-coded).
+- [ ] Submit bloqueado se houver qualquer erro de validação.
+- [ ] Toast de sucesso, erro ou dedup (duplicada) após POST.
+- [ ] Layout responsivo 375 px – 1440 px.
 
-**Description:** Página separada com listagem tabular de todas as indicações cadastradas, com busca e filtro básicos.
+### FR-02: Endpoint `POST /indicacoes`
 
-**Acceptance Criteria:**
-- [ ] Tabela exibe: executivo, CNPJ da indústria, representante, quantidade de varejistas, data, status resumido dos detalhes
-- [ ] Campo de busca filtra por nome do executivo ou CNPJ da indústria em tempo real (frontend)
-- [ ] Indicações são ordenadas da mais recente para a mais antiga por padrão
-- [ ] Painel carrega em menos de 2 segundos para até 500 registros
-- [ ] Linha expansível exibe CNPJs dos varejistas e detalhes da negociação
-
-### FR-04: Exportação CSV
-
-**Description:** Botão no painel que exporta todas as indicações visíveis (considerando filtros ativos) em formato CSV.
+**Descrição:** Recebe payload v2, persiste no Supabase, calcula
+`idempotency_key` e enfileira sinks.
 
 **Acceptance Criteria:**
-- [ ] CSV inclui todos os campos da indicação, com CNPJs de varejistas separados por ponto-e-vírgula na mesma célula
-- [ ] Nome do arquivo segue o padrão `blu_indicacoes_YYYY-MM-DD.csv`
-- [ ] CSV usa encoding UTF-8 com BOM para compatibilidade com Excel
-- [ ] A exportação respeita os filtros ativos no painel (exporta apenas o que está visível)
 
-### FR-05: API Backend (FastAPI)
+- [ ] Payload validado por Pydantic v2 (`IndicacaoCreate`).
+- [ ] `idempotency_key = sha256(fornecedor + participantes + lojistas + dia BR)`.
+- [ ] Se chave já existir (not deleted), retorna 201 com `duplicada=true`
+      (idempotente, não cria registro novo).
+- [ ] Upsert cascata: `executivos`, `gestores`, `representantes`, `lojistas`.
+- [ ] `created_at = now()` (nunca do payload).
+- [ ] Enfileira `integration_events` para os workflows ativos.
+- [ ] Retorna p95 < 800 ms.
 
-**Description:** API RESTful em Python/FastAPI que recebe, valida e persiste as indicações no Supabase.
+### FR-03: Resolução automática de UF
 
-**Endpoints:**
-- `POST /indicacoes` — cria nova indicação
-- `GET /indicacoes` — lista todas as indicações (suporte a query params de filtro)
-- `GET /indicacoes/export/csv` — retorna CSV das indicações
-
-**Acceptance Criteria:**
-- [ ] `POST /indicacoes` valida todos os campos e retorna 201 em sucesso ou 422 com detalhes do erro
-- [ ] `GET /indicacoes` aceita parâmetros `?executivo=` e `?cnpj_industria=` para filtro
-- [ ] `GET /indicacoes/export/csv` retorna arquivo com `Content-Disposition: attachment`
-- [ ] Todos os endpoints retornam JSON com estrutura consistente em caso de erro
-- [ ] CORS configurado para permitir apenas a origem do frontend
-
-### FR-06: Persistência no Supabase
-
-**Description:** Todas as indicações são armazenadas no Supabase (PostgreSQL). O schema deve ser normalizado para suportar múltiplos varejistas por indicação.
+**Descrição:** Derivar UF do lojista sem depender de input manual.
 
 **Acceptance Criteria:**
-- [ ] Tabela `indicacoes` com campos: id, executivo_nome, executivo_email, cnpj_industria, doc_representante, detalhes, criado_em
-- [ ] Tabela `varejistas_indicados` com campos: id, indicacao_id (FK), cnpj_varejista
-- [ ] Todos os CNPJs são armazenados somente com dígitos (sem máscara)
-- [ ] `criado_em` é preenchido automaticamente pelo banco com `now()`
-- [ ] Row Level Security (RLS) habilitado com política de leitura/escrita irrestrita (sem auth no MVP)
+
+- [ ] 1ª tentativa: `GET brasilapi.com.br/api/cnpj/v1/{cnpj}` (timeout 3 s).
+- [ ] 2ª tentativa: DDD do WhatsApp → UF (tabela fixa 88 DDDs).
+- [ ] Se falhar, grava `INDEFINIDO` e loga alerta.
+- [ ] `uf_resolvida` é persistida em `lojistas.uf` e propagada ao Deal.
+
+### FR-04: Regionalização
+
+**Descrição:** UF → owner do CRM via tabela de configuração
+`owners_regionalizacao` (UF text PK, owner_id uuid).
+
+**Acceptance Criteria:**
+
+- [ ] Consulta direta à tabela (cache em memória de 5 min).
+- [ ] Fallback para `supervisor geral` quando UF = `INDEFINIDO`.
+- [ ] Owner registrado no Deal criado no HubSpot.
+
+### FR-05: Classificação Alto Potencial
+
+**Descrição:** Lojista é `alto_potencial=true` se:
+(a) CNPJ na tabela `lojistas_vip`, OU (b) `tipo_produto = Split`,
+OU (c) `faturamento_anual > 50_000_000` (quando informado).
+
+**Acceptance Criteria:**
+
+- [ ] Determinado no serviço antes de criar o Deal.
+- [ ] Propagado à property `alto_potencial` da company e do Deal.
+- [ ] Campo consultável no painel.
+
+### FR-06: WF1 — Indicação Varejo (HubSpot)
+
+Criar/atualizar GES (contato), REP (custom object), Lojista (company);
+associar GES ↔ Fornecedor, REP ↔ Fornecedor, Lojista ↔ Fornecedor,
+Lojista ↔ GES, Lojista ↔ REP conforme cenário.
+
+### FR-07: WF2 — Cadastro REP/Gestor
+
+Endpoints administrativos `POST /admin/ges` e `POST /admin/rep` para
+criar contatos/custom objects fora do fluxo da LP.
+
+### FR-08: WF3 — Criação de Negócios
+
+Para cada lojista, criar Deal no pipeline "Conexões", aplicando cenário
+1..6 (tabela em `.claude/wiki_oficial.md` §5.2), regionalização,
+Alto Potencial e as 11 associações.
+
+### FR-09: WF4 — Consulta REP/Gestor
+
+`GET /admin/rep?q=` e `GET /admin/ges?q=` com busca parcial (nome,
+documento, e-mail) — read-only, cache 5 min.
+
+### FR-10: Sinks assíncronos
+
+Worker consome `integration_events` (status=pending) e publica em:
+
+- HubSpot CRM (WF1 + WF3).
+- Excel (append-only com `indicacao_id` em toda linha).
+- S3 Parquet (futuro; stub pronto).
+
+### FR-11: Painel interno `/painel.html`
+
+Tabela + busca + filtros (executivo, fornecedor, UF, prioridade,
+alto_potencial); export CSV respeita filtros.
+
+### FR-12: Segurança
+
+- CORS allowlist configurável via env.
+- Rejeitar headers com CRLF ou `Host`/`Origin` inesperados.
+- Rate limit (30 req/min por IP no endpoint público).
+- Supabase RLS habilitado; backend usa service_role.
+- Segredos apenas em `.env`.
+
+### FR-13: Notificação Teams
+
+Falhas 5xx, HubSpot 5xx, e qualquer `integration_event` com 3 retries
+falhos disparam mensagem no canal "Conexões – Alertas".
+
+### FR-14: Observabilidade
+
+- Log JSON estruturado com `indicacao_id`, `idempotency_key`,
+  `workflow`, `step`, `duration_ms`, `status`.
+- Métricas: indicações/dia, % dedup, % Alto Potencial, latência p95,
+  taxa de sucesso por workflow.
+- `audit_log` registra diff before/after de qualquer mutação.
 
 ## Non-Functional Requirements
 
-- **Performance:** Carregamento inicial do formulário < 1.5s; painel com 500 registros < 2s
-- **Segurança:** Validação de entrada no backend (nunca confiar apenas no frontend); HTTPS obrigatório em produção; variáveis sensíveis (chaves Supabase) apenas em variáveis de ambiente
-- **Responsividade:** Layout funcional em mobile (375px) e desktop (1280px); formulário utilizável em celular
-- **Confiabilidade:** Feedback claro ao usuário em caso de erro de rede ou servidor
-- **Manutenibilidade:** Código Python com tipagem (Pydantic models); separação clara entre rotas, serviços e schemas
+- **Performance:** `POST /indicacoes` p95 < 800 ms (sem sinks síncronos).
+- **Segurança:** HTTPS only, secrets em env, RLS, CORS allowlist.
+- **Disponibilidade:** retry exponencial 3x em sinks; se HubSpot cair,
+  indicação ainda é persistida.
+- **Compliance:** LGPD — auditoria completa, soft-delete, TTL configurável
+  para `audit_log` (180 dias) e `integration_events` (30 dias).
+- **Manutenibilidade:** tipagem estrita (Pydantic v2, mypy), separação
+  schemas/services/repositories/integrations.
 
 ## Tech Stack
 
-- **Frontend:** HTML5 + Tailwind CSS (CDN) + Alpine.js (CDN)
-- **Backend:** Python 3.11+ / FastAPI + Uvicorn
-- **Banco de Dados:** Supabase (PostgreSQL) via `supabase-py`
-- **Hosting:** A definir (Railway ou Render para backend; Netlify ou Vercel para frontend estático)
+- **Frontend:** HTML5 + Tailwind (CDN) + Alpine.js (CDN) + Inter.
+- **Backend:** Python 3.11 / FastAPI / Uvicorn.
+- **Banco:** Supabase (Postgres 15) via `supabase-py`.
+- **HTTP client:** `httpx[http2]`.
+- **HubSpot:** Private App token (env) + API v3.
+- **Integração externa:** BrasilAPI (CNPJ).
+- **Notificações:** Microsoft Teams Incoming Webhook.
+- **CI/CD:** a definir (GitHub Actions preferido).
+- **Hosting:** backend em Railway/Render; LP no HubSpot CMS (ou Netlify).
 
-## Sprint Plan Summary
+## Sprint Plan Summary (9 sprints)
 
 | Sprint | Tema | Duração |
-|--------|------|---------|
-| Sprint 1 | Fundação: ambiente, banco de dados e estrutura base | 1 semana |
-| Sprint 2 | Funcionalidades core: formulário, API e painel | 1 semana |
-| Sprint 3 | Qualidade e entrega: validações, exportação CSV e deploy | 1 semana |
+|---|---|---|
+| 1 | Infraestrutura + modelo de dados v2 | 1 semana |
+| 2 | Backend API completo (idempotência, upserts, UF) | 1 semana |
+| 3 | Frontend v2 (LP Conexões) alinhado ao schema real | 1 semana |
+| 4 | HubSpot WF4 — Consulta REP/Gestor (read-only) | 1 semana |
+| 5 | HubSpot WF2 — Cadastro REP/Gestor (admin) | 1 semana |
+| 6 | HubSpot WF1 — Indicação Varejo (orquestrador) | 1 semana |
+| 7 | HubSpot WF3 — Criação de Deals (cenários 1..6) | 1 semana |
+| 8 | Segurança + Teams + Excel + Rate limit | 1 semana |
+| 9 | Observabilidade + carga + rollout gradual | 1 semana |
+
+Detalhamento por tarefa em `spec.json`.
+
+## Risks & Mitigations
+
+| Risco | Impacto | Mitigação |
+|---|---|---|
+| Wiki oficial incompleto (typeIds) | Alto — bloqueia WF3 | Stubs carregam typeIds do env; tarefa P1 para extrair. |
+| BrasilAPI instável | Médio — UF indefinida | Fallback DDD; `INDEFINIDO` roteia para supervisor. |
+| Volume inesperado | Médio — latência | Idempotência + worker assíncrono + rate limit. |
+| HubSpot 5xx em bulk | Alto — perda de sync | Queue com retry exponencial + Teams alert. |
+| LGPD | Alto — exposição | Soft-delete + TTL + RLS + audit_log. |
 
 ## Open Questions
 
-- [ ] O acesso ao painel precisa de alguma restrição mínima? (ex: senha fixa, IP whitelist)
-- [ ] Executivo usa nome OU email, ou ambos os campos devem estar presentes?
-- [ ] Existe um limite máximo de varejistas por indicação que faz sentido para o negócio?
-- [ ] Qual será o ambiente de hosting final? (Railway, Render, servidor interno Blu)
-- [ ] Os dados precisam ser integrados futuramente com algum CRM já em uso na Blu?
+- [ ] Onde hospedar o backend (Railway vs Render vs interno Blu)?
+- [ ] Webhook Teams do canal "Conexões – Alertas" está liberado?
+- [ ] TypeIds das 11 associações — Caio consegue extrair do portal HubSpot?
+- [ ] Lista VIP de CNPJs para regra de Alto Potencial — onde vive hoje?
+- [ ] Mapa UF → owner definitivo (hoje está em HubDB? em planilha?).
+- [ ] O painel interno fica em `blu.com.br/conexoes-painel` ou em
+      subdomínio separado com auth SSO?

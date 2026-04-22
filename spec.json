@@ -1,491 +1,593 @@
 {
   "project": {
-    "name": "Blu Engajamento Comercial",
-    "description": "Ferramenta interna para executivos comerciais da Blu registrarem indicações de varejistas recebidas de indústrias parceiras no processo de conversão boleto → PagBlu.",
+    "name": "Blu Engajamento Comercial — Conexões v2",
+    "description": "Migração dos 4 workflows n8n para FastAPI + Supabase (source-of-truth), mantendo HubSpot CRM/HubDBs e Excel como sinks plug-and-play. Inclui LP pública, 4 workflows de integração, regionalização por UF, classificação Alto Potencial, observabilidade e segurança.",
     "stack": {
-      "frontend": "HTML5 + Tailwind CSS (CDN) + Alpine.js (CDN)",
-      "backend": "Python 3.11+ / FastAPI + Uvicorn",
-      "database": "Supabase (PostgreSQL) via supabase-py",
-      "hosting": "A definir (Railway/Render para backend, Netlify/Vercel para frontend)"
+      "frontend": "HTML5 + Tailwind CSS (CDN) + Alpine.js (CDN) + Inter",
+      "backend": "Python 3.11 / FastAPI + Uvicorn",
+      "database": "Supabase (PostgreSQL 15) via supabase-py",
+      "http_client": "httpx[http2]",
+      "external_apis": "HubSpot CRM v3, BrasilAPI, Microsoft Teams Webhook",
+      "hosting": "Railway/Render (backend); HubSpot CMS (LP) ou Netlify"
     },
-    "totalSprints": 3,
-    "sprintDurationWeeks": 1
+    "totalSprints": 9,
+    "sprintDurationWeeks": 1,
+    "references": [
+      ".claude/wiki_oficial.md",
+      "PRD.md",
+      "docs/fluxo_atual.md",
+      "docs/modelagem_supabase_v2.md",
+      "backend/migrations/002_modelagem_v2.sql"
+    ]
   },
   "sprints": [
     {
       "id": 1,
-      "name": "Sprint 1 — Fundação: Ambiente, Banco e Estrutura Base",
-      "goal": "Ter o projeto configurado localmente, o schema do banco criado no Supabase e o FastAPI respondendo com um endpoint de health check.",
-      "startDate": null,
-      "endDate": null,
+      "name": "Sprint 1 — Infraestrutura + Modelo de Dados v2",
+      "goal": "Tudo que é infra e base de dados; acaba com Supabase modelado e FastAPI de pé com /health e /.",
+      "status": "done",
       "tasks": [
         {
           "id": "S1-T01",
-          "title": "Criar estrutura de pastas e arquivos do projeto",
-          "description": "Definir a estrutura de diretórios separando frontend (HTML/CSS/JS) do backend (FastAPI). Criar arquivos base: README.md, .gitignore, .env.example.",
-          "type": "setup",
+          "title": "Estrutura de pastas e scaffolding do projeto",
+          "description": "Criar árvore backend/ (main, schemas, validators, idempotency, database, repositories, services, integrations/, migrations/) e frontend/ (index.html, painel.html, js/).",
           "priority": "critical",
-          "estimateHours": 1,
-          "dependsOn": [],
+          "estimateHours": 2,
+          "status": "done",
           "acceptanceCriteria": [
-            "Estrutura de pastas criada: /frontend e /backend na raiz",
-            ".gitignore inclui .env, __pycache__, *.pyc, node_modules",
-            ".env.example documenta todas as variáveis necessárias (SUPABASE_URL, SUPABASE_KEY)"
-          ],
-          "files": [
-            "README.md",
-            ".gitignore",
-            ".env.example",
-            "frontend/index.html",
-            "frontend/painel.html",
-            "backend/main.py",
-            "backend/requirements.txt"
-          ],
-          "status": "todo"
+            ".gitignore inclui .env, __pycache__, venv, *.pyc",
+            "README.md com setup e endpoints",
+            ".env.example documenta SUPABASE_URL, SUPABASE_KEY, HUBSPOT_PRIVATE_APP_TOKEN, ALLOWED_ORIGINS, LOG_LEVEL"
+          ]
         },
         {
           "id": "S1-T02",
-          "title": "Configurar ambiente Python e dependências FastAPI",
-          "description": "Criar virtualenv, instalar FastAPI, Uvicorn, supabase-py, pydantic e python-dotenv. Gerar requirements.txt.",
-          "type": "setup",
+          "title": "Requirements + virtualenv + Uvicorn rodando",
+          "description": "Fixar versões de fastapi, uvicorn, supabase, pydantic, python-dotenv, httpx[http2], pytest.",
           "priority": "critical",
           "estimateHours": 1,
-          "dependsOn": ["S1-T01"],
+          "status": "done",
           "acceptanceCriteria": [
-            "requirements.txt gerado com versões fixadas (fastapi, uvicorn, supabase, pydantic, python-dotenv)",
-            "Comando `uvicorn main:app --reload` sobe o servidor sem erros",
-            "GET / retorna {\"status\": \"ok\"} com HTTP 200"
-          ],
-          "files": [
-            "backend/requirements.txt",
-            "backend/main.py"
-          ],
-          "status": "todo"
+            "uvicorn backend.main:app --reload sobe sem erro",
+            "GET / retorna {status: ok, service, version}",
+            "GET /health confere conexão Supabase"
+          ]
         },
         {
           "id": "S1-T03",
-          "title": "Criar schema do banco de dados no Supabase",
-          "description": "Criar as tabelas `indicacoes` e `varejistas_indicados` no Supabase com todos os campos definidos no PRD. Habilitar RLS com política permissiva para MVP.",
-          "type": "setup",
+          "title": "Migration 002_modelagem_v2.sql — schema 3NF completo",
+          "description": "Tabelas: executivos, fornecedores, feiras, gestores, representantes, lojistas, indicacoes, indicacao_lojistas, integration_events, audit_log. Enums: tipo_indicacao, tipo_produto, cargo_gestor, participantes_indicacao, indicacao_status, integration_status, audit_action. Trigger touch_updated_at. UNIQUE idempotency_key. View v_indicacoes_detalhe. RLS policies. Seed ~60 feiras.",
           "priority": "critical",
-          "estimateHours": 2,
-          "dependsOn": ["S1-T01"],
+          "estimateHours": 6,
+          "status": "done",
           "acceptanceCriteria": [
-            "Tabela `indicacoes` criada com campos: id (uuid, PK), executivo_nome (text), executivo_email (text), cnpj_industria (varchar 14), doc_representante (varchar 14), detalhes (text, nullable), criado_em (timestamptz, default now())",
-            "Tabela `varejistas_indicados` criada com campos: id (uuid, PK), indicacao_id (uuid, FK → indicacoes.id), cnpj_varejista (varchar 14)",
-            "RLS habilitado em ambas as tabelas com política de SELECT e INSERT irrestrita",
-            "Migration SQL salva em backend/migrations/001_initial_schema.sql"
+            "pglast consegue parsear sem erros",
+            "Aplicada via Dashboard → SQL Editor",
+            "view v_indicacoes_detalhe retorna linhas existentes"
           ],
-          "files": [
-            "backend/migrations/001_initial_schema.sql"
-          ],
-          "status": "todo"
+          "files": ["backend/migrations/002_modelagem_v2.sql"]
         },
         {
           "id": "S1-T04",
-          "title": "Configurar cliente Supabase no backend",
-          "description": "Criar módulo de conexão com Supabase usando variáveis de ambiente. Testar conexão com uma query simples.",
-          "type": "backend",
+          "title": "database.py — cliente Supabase com fail-fast",
+          "description": "Ler SUPABASE_URL e SUPABASE_KEY do env; abortar startup se faltar; health_check() com ping leve.",
           "priority": "critical",
           "estimateHours": 1,
-          "dependsOn": ["S1-T02", "S1-T03"],
-          "acceptanceCriteria": [
-            "Módulo backend/database.py exporta client Supabase configurado via .env",
-            "Aplicação não sobe se SUPABASE_URL ou SUPABASE_KEY estiverem ausentes",
-            "Endpoint GET /health retorna {\"status\": \"ok\", \"database\": \"connected\"} quando Supabase está acessível"
-          ],
-          "files": [
-            "backend/database.py",
-            "backend/main.py"
-          ],
-          "status": "todo"
+          "status": "done"
         },
         {
           "id": "S1-T05",
-          "title": "Criar Pydantic models para indicação e varejista",
-          "description": "Definir os schemas de entrada e saída da API usando Pydantic v2: IndicacaoCreate, IndicacaoResponse, VarejistaCreate.",
-          "type": "backend",
-          "priority": "high",
-          "estimateHours": 1.5,
-          "dependsOn": ["S1-T02"],
-          "acceptanceCriteria": [
-            "IndicacaoCreate valida que cnpj_industria tem 14 dígitos numéricos",
-            "IndicacaoCreate valida que doc_representante tem 11 (CPF) ou 14 (CNPJ) dígitos",
-            "IndicacaoCreate valida que varejistas é lista não-vazia com ao menos 1 CNPJ",
-            "IndicacaoResponse inclui id, todos os campos e lista de cnpjs_varejistas",
-            "Schemas documentados com exemplos no docstring para aparecer no Swagger"
-          ],
-          "files": [
-            "backend/schemas.py"
-          ],
-          "status": "todo"
+          "title": "validators.py — CNPJ e CPF módulo 11",
+          "description": "Funções puras somente_digitos, validar_cnpj, validar_cpf. Rejeitar sequências repetidas.",
+          "priority": "critical",
+          "estimateHours": 2,
+          "status": "done"
         },
         {
           "id": "S1-T06",
-          "title": "Configurar CORS no FastAPI",
-          "description": "Adicionar middleware CORS para permitir requisições do frontend (localhost em dev, domínio final em prod).",
-          "type": "backend",
+          "title": "docs/fluxo_atual.md + docs/modelagem_supabase_v2.md",
+          "description": "Documentar ponta-a-ponta (atores, campos, 8 problemas) e racional da modelagem 3NF.",
           "priority": "high",
-          "estimateHours": 0.5,
-          "dependsOn": ["S1-T02"],
-          "acceptanceCriteria": [
-            "CORSMiddleware adicionado com allow_origins configurável via variável de ambiente ALLOWED_ORIGINS",
-            "Em desenvolvimento, localhost:5500 e localhost:3000 são permitidos",
-            "Requisições de origens não listadas recebem HTTP 403"
-          ],
-          "files": [
-            "backend/main.py"
-          ],
-          "status": "todo"
+          "estimateHours": 3,
+          "status": "done"
         },
         {
           "id": "S1-T07",
-          "title": "Criar layout base HTML com Tailwind e identidade Blu",
-          "description": "Criar o arquivo HTML base com Tailwind CSS via CDN, paleta de cores da Blu (azul #1A56DB como primário), tipografia e componentes reutilizáveis (botão, input, badge).",
-          "type": "design",
+          "title": "Wiki oficial em .claude/wiki_oficial.md",
+          "description": "Preservar os 4 workflows, 5 tipos, regras (UF/cenários/regionalização/alto potencial), mapeamentos e associações como contexto da sessão.",
           "priority": "high",
           "estimateHours": 2,
-          "dependsOn": ["S1-T01"],
-          "acceptanceCriteria": [
-            "HTML base inclui Tailwind CSS e Alpine.js via CDN",
-            "Paleta de cores Blu definida em config Tailwind inline (azul primário, cinza neutro, verde sucesso, vermelho erro)",
-            "Header com logo Blu e navegação entre Formulário e Painel",
-            "Layout responsivo: mobile-first, funcional em 375px e 1280px",
-            "Componentes base estilizados: input com label, botão primário, mensagem de erro"
-          ],
-          "files": [
-            "frontend/index.html",
-            "frontend/painel.html"
-          ],
-          "status": "todo"
+          "status": "done"
         }
       ]
     },
     {
       "id": 2,
-      "name": "Sprint 2 — Funcionalidades Core: Formulário, API e Painel",
-      "goal": "Formulário funcional enviando dados para o backend, API gravando no Supabase e painel listando as indicações cadastradas.",
-      "startDate": null,
-      "endDate": null,
+      "name": "Sprint 2 — Backend API completo (WF1 interno)",
+      "goal": "Endpoint POST /indicacoes e GETs auxiliares prontos com idempotência, upserts em cascata e enfileiramento de sinks — ainda sem bater em HubSpot.",
+      "status": "in_progress",
       "tasks": [
         {
           "id": "S2-T01",
-          "title": "Implementar validação de CNPJ e CPF no frontend (JavaScript)",
-          "description": "Criar módulo JS com funções de validação de CNPJ (algoritmo módulo 11, 14 dígitos) e CPF (algoritmo módulo 11, 11 dígitos). Aplicar máscaras de input. Detectar automaticamente o tipo de documento pelo número de dígitos digitados.",
-          "type": "frontend",
+          "title": "schemas.py Pydantic v2 alinhado ao payload v2",
+          "description": "Enums espelhando Postgres; modelos ExecutivoIn, FornecedorRef, GestorIn, RepresentanteIn, LojistaIn, IndicacaoCreate, IndicacaoCreatedOut; model_validators para condicionais (eh_feira → feira_nome, prioridade=programado → data_contato, tipo=varejo → participantes).",
           "priority": "critical",
-          "estimateHours": 3,
-          "dependsOn": ["S1-T07"],
-          "acceptanceCriteria": [
-            "Função validarCNPJ() retorna true/false para qualquer CNPJ (testada com CNPJs válidos e inválidos conhecidos)",
-            "Função validarCPF() retorna true/false para qualquer CPF",
-            "Campo de representante detecta CPF (11 dígitos) ou CNPJ (14 dígitos) automaticamente e aplica máscara correta",
-            "Mensagem de erro aparece abaixo do campo ao perder foco com documento inválido",
-            "Mensagem de erro some ao corrigir o campo"
-          ],
-          "files": [
-            "frontend/js/validacao.js"
-          ],
-          "status": "todo"
+          "estimateHours": 4,
+          "status": "done"
         },
         {
           "id": "S2-T02",
-          "title": "Implementar formulário com Alpine.js — campos estáticos",
-          "description": "Construir o formulário com Alpine.js gerenciando estado: executivo (nome/email), CNPJ indústria, documento representante, detalhes. Incluir lógica de submit com fetch para o backend.",
-          "type": "frontend",
+          "title": "idempotency.py — SHA-256 determinístico com fuso BR",
+          "description": "Fingerprint JSON ordenado: fornecedor + participantes + lojistas + dia (America/Sao_Paulo). Dia injetável para testes.",
           "priority": "critical",
-          "estimateHours": 3,
-          "dependsOn": ["S2-T01"],
-          "acceptanceCriteria": [
-            "Todos os campos obrigatórios bloqueiam o submit se vazios, com erro inline",
-            "Submit chama POST /indicacoes via fetch com JSON body correto",
-            "Durante o envio, botão exibe 'Enviando...' e fica desabilitado",
-            "Sucesso: formulário é limpo e exibe banner verde de confirmação por 4 segundos",
-            "Erro de rede: banner vermelho com mensagem 'Erro ao enviar. Tente novamente.'"
-          ],
-          "files": [
-            "frontend/index.html",
-            "frontend/js/formulario.js"
-          ],
-          "status": "todo"
+          "estimateHours": 2,
+          "status": "done"
         },
         {
           "id": "S2-T03",
-          "title": "Implementar campo dinâmico de CNPJs de varejistas",
-          "description": "Campo que permite adicionar e remover múltiplos CNPJs de varejistas. Mínimo 1, máximo 20. Cada CNPJ validado individualmente ao perder foco.",
-          "type": "frontend",
+          "title": "repositories.py — camada única de acesso ao Supabase",
+          "description": "upsert_executivo/gestor/representante/lojista, find_fornecedor, find_feira_id, find_indicacao_by_idempotency_key, insert_indicacao, insert_indicacao_lojistas, enqueue_integration_event, list_fornecedores, list_feiras, listar_indicacoes.",
           "priority": "critical",
-          "estimateHours": 2,
-          "dependsOn": ["S2-T01", "S2-T02"],
-          "acceptanceCriteria": [
-            "Botão '+ Adicionar varejista' insere novo campo de input com máscara CNPJ",
-            "Botão de remover (ícone lixeira) remove o campo correspondente (mínimo 1 campo sempre visível)",
-            "Cada campo valida CNPJ individualmente ao perder foco",
-            "Submit é bloqueado se qualquer CNPJ de varejista for inválido",
-            "Com mais de 5 varejistas, a área de varejistas exibe scroll vertical"
-          ],
-          "files": [
-            "frontend/index.html",
-            "frontend/js/formulario.js"
-          ],
-          "status": "todo"
+          "estimateHours": 5,
+          "status": "done"
         },
         {
           "id": "S2-T04",
-          "title": "Implementar endpoint POST /indicacoes no FastAPI",
-          "description": "Criar rota que recebe o payload da indicação, valida com Pydantic, executa validação de documentos (CNPJ/CPF) no backend e persiste nas tabelas indicacoes e varejistas_indicados no Supabase.",
-          "type": "backend",
+          "title": "services.py — criar_indicacao (orquestrador v2)",
+          "description": "Valida fornecedor → resolve feira → upsert dos atores → dedup via idempotency_key → insert indicação + lojistas → enfileira integration_events.",
           "priority": "critical",
-          "estimateHours": 3,
-          "dependsOn": ["S1-T04", "S1-T05"],
+          "estimateHours": 4,
+          "status": "done",
           "acceptanceCriteria": [
-            "POST /indicacoes com payload válido retorna HTTP 201 com o objeto criado (incluindo id e criado_em)",
-            "CNPJ inválido retorna HTTP 422 com campo 'detail' descrevendo qual documento falhou",
-            "Todos os CNPJs são gravados sem máscara (somente dígitos) no banco",
-            "Varejistas são inseridos na tabela varejistas_indicados com FK correta para indicacao_id",
-            "Erros do Supabase são capturados e retornam HTTP 500 com mensagem genérica (sem expor detalhes internos)"
-          ],
-          "files": [
-            "backend/routers/indicacoes.py",
-            "backend/services/indicacoes_service.py",
-            "backend/main.py"
-          ],
-          "status": "todo"
+            "Levanta FornecedorDesconhecido (HTTP 422) quando não há código nem CNPJ conhecido",
+            "Quando idempotency_key já existe: retorna registro antigo com duplicada=true",
+            "Insere 1 evento pendente por sink ativo"
+          ]
         },
         {
           "id": "S2-T05",
-          "title": "Implementar endpoint GET /indicacoes no FastAPI",
-          "description": "Rota que retorna todas as indicações com seus varejistas, suportando filtros opcionais por nome do executivo e CNPJ da indústria via query params.",
-          "type": "backend",
-          "priority": "high",
+          "title": "main.py rotas completas",
+          "description": "GET /, GET /health, POST /indicacoes, GET /indicacoes (filtros), GET /fornecedores, GET /feiras.",
+          "priority": "critical",
           "estimateHours": 2,
-          "dependsOn": ["S2-T04"],
-          "acceptanceCriteria": [
-            "GET /indicacoes retorna lista de indicações ordenadas por criado_em DESC",
-            "Cada item inclui lista de cnpjs_varejistas (join com varejistas_indicados)",
-            "?executivo=texto filtra por nome do executivo (case-insensitive, parcial)",
-            "?cnpj_industria=00000000000000 filtra por CNPJ exato da indústria",
-            "Retorna lista vazia [] (não erro) quando nenhuma indicação é encontrada"
-          ],
-          "files": [
-            "backend/routers/indicacoes.py",
-            "backend/services/indicacoes_service.py"
-          ],
-          "status": "todo"
+          "status": "done"
         },
         {
           "id": "S2-T06",
-          "title": "Implementar painel de listagem no frontend",
-          "description": "Página painel.html com tabela de indicações carregada via GET /indicacoes. Campo de busca filtra em tempo real por executivo ou CNPJ da indústria. Linha expansível mostra CNPJs dos varejistas e detalhes.",
-          "type": "frontend",
+          "title": "Resolução automática de UF (BrasilAPI → DDD)",
+          "description": "Serviço resolver_uf(cnpj, whatsapp). BrasilAPI com timeout 3s; se falhar, mapa DDD→UF. Cache em memória (TTL 12h).",
+          "priority": "high",
+          "estimateHours": 4,
+          "status": "todo",
+          "files": ["backend/services/uf_resolver.py"]
+        },
+        {
+          "id": "S2-T07",
+          "title": "Classificação Alto Potencial",
+          "description": "Função classificar_alto_potencial(lojista) aplicando regras: lista VIP (tabela lojistas_vip), tipo_produto=Split, faturamento>50M.",
           "priority": "high",
           "estimateHours": 3,
-          "dependsOn": ["S2-T05"],
+          "status": "todo",
+          "files": ["backend/services/alto_potencial.py", "backend/migrations/003_lojistas_vip.sql"]
+        },
+        {
+          "id": "S2-T08",
+          "title": "Regionalização por UF",
+          "description": "Tabela owners_regionalizacao (uf PK, owner_id, pool) + serviço resolver_owner(uf). Cache 5min.",
+          "priority": "high",
+          "estimateHours": 3,
+          "status": "todo",
+          "files": ["backend/services/regionalizacao.py", "backend/migrations/004_owners_regionalizacao.sql"]
+        },
+        {
+          "id": "S2-T09",
+          "title": "Testes unitários dos serviços",
+          "description": "pytest para validators, idempotency, serviços de UF/AltoPotencial/Regionalização (mock BrasilAPI), criar_indicacao (mock Supabase).",
+          "priority": "critical",
+          "estimateHours": 5,
+          "status": "todo",
           "acceptanceCriteria": [
-            "Tabela exibe colunas: Executivo, CNPJ Indústria, Representante, Qtd. Varejistas, Data",
-            "Campo de busca filtra por executivo ou CNPJ da indústria sem recarregar a página",
-            "Clique na linha expande e mostra: lista de CNPJs de varejistas formatados e campo de detalhes",
-            "Estado de carregamento exibe skeleton loader enquanto fetch está em andamento",
-            "Estado de erro exibe mensagem 'Não foi possível carregar as indicações' com botão de retry"
-          ],
-          "files": [
-            "frontend/painel.html",
-            "frontend/js/painel.js"
-          ],
-          "status": "todo"
+            "≥ 30 testes passando",
+            "Cobertura ≥ 80% em backend/services/"
+          ]
         }
       ]
     },
     {
       "id": 3,
-      "name": "Sprint 3 — Qualidade e Entrega: CSV, Edge Cases e Deploy",
-      "goal": "Exportação CSV funcionando, todos os edge cases cobertos, aplicação deployada e acessível por link interno.",
-      "startDate": null,
-      "endDate": null,
+      "name": "Sprint 3 — Frontend v2 (LP Conexões)",
+      "goal": "LP em blu.com.br (ou subrota) alinhada ao schema v2 com os 5 tipos, autocomplete de fornecedor, lojistas dinâmicos, feedback de dedup.",
+      "status": "in_progress",
       "tasks": [
         {
           "id": "S3-T01",
-          "title": "Implementar endpoint GET /indicacoes/export/csv",
-          "description": "Endpoint FastAPI que gera e retorna arquivo CSV com todas as indicações (respeitando filtros da query). CSV com encoding UTF-8 BOM para compatibilidade com Excel.",
-          "type": "backend",
+          "title": "frontend/index.html v2 (3 seções: Identificação, Participantes, Lojistas)",
+          "description": "Tailwind + Inter + Alpine. Progressive disclosure, stepper, toasts, layout responsivo.",
           "priority": "critical",
-          "estimateHours": 2,
-          "dependsOn": ["S2-T05"],
-          "acceptanceCriteria": [
-            "GET /indicacoes/export/csv retorna arquivo com Content-Type: text/csv e Content-Disposition: attachment; filename=blu_indicacoes_YYYY-MM-DD.csv",
-            "CSV inclui colunas: Executivo Nome, Executivo Email, CNPJ Industria, Documento Representante, CNPJs Varejistas (separados por ;), Data Cadastro, Detalhes",
-            "Encoding UTF-8 com BOM (\\ufeff) para compatibilidade com Excel",
-            "CNPJs são formatados com máscara no CSV (ex: 00.000.000/0001-00)",
-            "Aceita os mesmos query params de filtro do GET /indicacoes"
-          ],
-          "files": [
-            "backend/routers/indicacoes.py",
-            "backend/services/export_service.py"
-          ],
-          "status": "todo"
+          "estimateHours": 8,
+          "status": "done"
         },
         {
           "id": "S3-T02",
-          "title": "Adicionar botão de exportação CSV no painel",
-          "description": "Botão 'Exportar CSV' no painel que chama GET /indicacoes/export/csv com os filtros ativos e dispara o download no browser.",
-          "type": "frontend",
-          "priority": "high",
-          "estimateHours": 1,
-          "dependsOn": ["S3-T01", "S2-T06"],
-          "acceptanceCriteria": [
-            "Botão 'Exportar CSV' visível no topo do painel",
-            "Clique aciona download do arquivo com nome blu_indicacoes_YYYY-MM-DD.csv",
-            "Se filtros estiverem ativos, o CSV exportado respeita os filtros",
-            "Botão exibe 'Gerando...' durante o download e volta ao normal após"
-          ],
-          "files": [
-            "frontend/painel.html",
-            "frontend/js/painel.js"
-          ],
-          "status": "todo"
+          "title": "frontend/js/validacao.js — máscaras + módulo 11 + detecção CPF/CNPJ",
+          "description": "somenteDigitos, validarCNPJ, validarCPF, mascararCNPJ, mascararCPF, mascararDocumento, tipoDocumento, validarDocumentoRepresentante.",
+          "priority": "critical",
+          "estimateHours": 3,
+          "status": "done"
         },
         {
           "id": "S3-T03",
-          "title": "Tratar edge cases de validação e UX no formulário",
-          "description": "Cobrir cenários não tratados: CNPJ de varejista duplicado na mesma indicação, campos com apenas espaços, CNPJ com todos os dígitos iguais (ex: 00000000000000).",
-          "type": "frontend",
-          "priority": "high",
-          "estimateHours": 2,
-          "dependsOn": ["S2-T03"],
-          "acceptanceCriteria": [
-            "CNPJs duplicados de varejistas na mesma indicação são detectados e exibem erro 'CNPJ já adicionado'",
-            "Campos com apenas espaços são tratados como vazios (trim antes de validar)",
-            "CNPJs com todos os dígitos iguais (00000000000000, 11111111111111 etc.) são rejeitados como inválidos",
-            "CPFs com todos os dígitos iguais (00000000000 etc.) são rejeitados como inválidos",
-            "Validação no backend também cobre esses casos (não só o frontend)"
-          ],
-          "files": [
-            "frontend/js/validacao.js",
-            "backend/schemas.py"
-          ],
-          "status": "todo"
+          "title": "frontend/js/formulario.js — payload v2",
+          "description": "x-data com form.executivo, form.fornecedor, form.gestor, form.representante, form.lojistas[]. Carregar fornecedores e feiras do backend. Payload no shape da IndicacaoCreate. Toast com mensagem de dedup quando duplicada=true.",
+          "priority": "critical",
+          "estimateHours": 6,
+          "status": "in_progress",
+          "files": ["frontend/js/formulario.js"]
         },
         {
           "id": "S3-T04",
-          "title": "Adicionar feedback visual e responsividade mobile ao formulário",
-          "description": "Revisar o formulário em mobile (375px): inputs grandes o suficiente para toque, espaçamento adequado, botão de submit fixo no bottom em mobile.",
-          "type": "design",
-          "priority": "medium",
-          "estimateHours": 2,
-          "dependsOn": ["S2-T02", "S2-T03"],
-          "acceptanceCriteria": [
-            "Formulário usável em iPhone SE (375px) sem scroll horizontal",
-            "Inputs têm altura mínima de 48px (área de toque adequada)",
-            "Botão 'Enviar Indicação' é sticky no bottom em mobile",
-            "Painel em mobile exibe tabela com scroll horizontal suave",
-            "Teste visual realizado em Chrome DevTools com emulação de dispositivo móvel"
-          ],
-          "files": [
-            "frontend/index.html",
-            "frontend/painel.html"
-          ],
+          "title": "frontend/painel.html + js/painel.js (filtros UF/alto_potencial/fornecedor)",
+          "description": "Tabela com busca, filtros por executivo, fornecedor, UF, prioridade, alto_potencial; export CSV com filtros aplicados.",
+          "priority": "high",
+          "estimateHours": 6,
           "status": "todo"
         },
         {
           "id": "S3-T05",
-          "title": "Configurar variáveis de ambiente e preparar para deploy",
-          "description": "Separar configurações de dev e prod. Criar script de start para produção. Documentar processo de deploy no README.",
-          "type": "devops",
-          "priority": "critical",
-          "estimateHours": 2,
-          "dependsOn": ["S1-T04", "S1-T06"],
-          "acceptanceCriteria": [
-            ".env.example documenta todas as variáveis: SUPABASE_URL, SUPABASE_KEY, ALLOWED_ORIGINS, PORT",
-            "backend/Procfile ou start command documentado para Railway/Render",
-            "README.md contém: pré-requisitos, como rodar localmente (passo a passo), como configurar o Supabase e como fazer deploy",
-            "Aplicação sobe corretamente lendo variáveis de ambiente (sem .env hardcoded)"
-          ],
-          "files": [
-            ".env.example",
-            "backend/Procfile",
-            "README.md"
-          ],
-          "status": "todo"
-        },
-        {
-          "id": "S3-T06",
-          "title": "Realizar testes end-to-end manuais e corrigir bugs",
-          "description": "Executar o fluxo completo: preencher formulário → enviar → verificar no Supabase → abrir painel → exportar CSV → abrir no Excel. Registrar e corrigir qualquer bug encontrado.",
-          "type": "testing",
+          "title": "Verificação no Chrome local (screenshot + smoke test)",
+          "description": "Abrir index.html e painel.html em http-server; preencher fluxos dos 5 cenários; validar dedup retornando 201 duplicada.",
           "priority": "high",
-          "estimateHours": 2,
-          "dependsOn": ["S3-T01", "S3-T02", "S3-T03", "S3-T04"],
-          "acceptanceCriteria": [
-            "Fluxo completo de cadastro executado sem erros em Chrome e Safari mobile",
-            "Indicação aparece corretamente no painel após cadastro (sem recarregar a página manualmente)",
-            "CSV exportado abre corretamente no Excel com acentos preservados",
-            "Teste com CNPJ/CPF inválido: formulário não permite envio",
-            "Teste com backend offline: mensagem de erro amigável exibida ao usuário"
-          ],
-          "files": [],
+          "estimateHours": 3,
           "status": "todo"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Sprint 4 — HubSpot WF4 (Consulta REP/Gestor, read-only)",
+      "goal": "Começar pela integração mais simples — search endpoints — para validar token, rate limit e error handling do HubSpot API v3.",
+      "status": "todo",
+      "tasks": [
+        {
+          "id": "S4-T01",
+          "title": "HubSpotClient real (substituir stub)",
+          "description": "Httpx assíncrono com Authorization Bearer, retry exponencial (tenacity), timeout 10s, tratamento 4xx/5xx, log estruturado.",
+          "priority": "critical",
+          "estimateHours": 4,
+          "files": ["backend/integrations/hubspot/client.py"]
         },
         {
-          "id": "S3-T07",
-          "title": "Deploy da aplicação e validação em produção",
-          "description": "Fazer deploy do backend (Railway ou Render) e do frontend estático (Netlify ou Vercel). Configurar variáveis de ambiente de produção. Testar o fluxo completo no ambiente de produção.",
-          "type": "devops",
+          "id": "S4-T02",
+          "title": "HubDBLookup.buscar_executivo_por_email + buscar_fornecedor_por_codigo",
+          "description": "POST /cms/v3/hubdb/tables/{tableId}/rows/query com filtros. IDs via env (HUBDB_TABLE_EXECUTIVOS, HUBDB_TABLE_FORNECEDORES).",
           "priority": "critical",
           "estimateHours": 3,
-          "dependsOn": ["S3-T05", "S3-T06"],
-          "acceptanceCriteria": [
-            "Backend acessível via URL pública HTTPS",
-            "Frontend acessível via URL pública HTTPS",
-            "CORS configurado corretamente (frontend consegue chamar o backend em produção)",
-            "Fluxo completo testado em produção: cadastro → painel → CSV",
-            "Link de acesso compartilhado com os executivos comerciais da Blu para validação"
-          ],
-          "files": [],
-          "status": "todo"
+          "files": ["backend/integrations/hubspot/hubdb.py"]
+        },
+        {
+          "id": "S4-T03",
+          "title": "HubSpotCRM.buscar_rep_por_documento + buscar_ges_por_email",
+          "description": "Search API v3 (contacts + custom object REP) com paginação.",
+          "priority": "critical",
+          "estimateHours": 4,
+          "files": ["backend/integrations/hubspot/crm.py"]
+        },
+        {
+          "id": "S4-T04",
+          "title": "Rotas admin read-only GET /admin/rep e /admin/ges",
+          "description": "Busca parcial (q=nome|email|documento) com cache 5min. Autenticação via header X-Admin-Token.",
+          "priority": "high",
+          "estimateHours": 3
+        },
+        {
+          "id": "S4-T05",
+          "title": "Testes de contrato com mock HubSpot (respx)",
+          "description": "Cobrir 200, 401, 429, 5xx e payload vazio.",
+          "priority": "high",
+          "estimateHours": 3
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Sprint 5 — HubSpot WF2 (Cadastro REP/Gestor admin)",
+      "goal": "Criação/atualização isolada de GES (contato) e REP (custom object) via rotas administrativas — base para WF1.",
+      "status": "todo",
+      "tasks": [
+        {
+          "id": "S5-T01",
+          "title": "HubSpotCRM.upsert_ges(gestor) — contato com papel_conexoes=GES",
+          "description": "Mapear todos os campos (firstname, lastname, email, phone, cargo_gestor_blu, fornecedor_codigo). Idempotente por email.",
+          "priority": "critical",
+          "estimateHours": 4
+        },
+        {
+          "id": "S5-T02",
+          "title": "HubSpotCRM.upsert_rep(representante) — custom object REP",
+          "description": "Propriedades nome, documento, tipo_documento, email, celular, tipo_bonificacao, fornecedor_principal_codigo. Idempotente por (tipo_documento, documento).",
+          "priority": "critical",
+          "estimateHours": 4
+        },
+        {
+          "id": "S5-T03",
+          "title": "Associações GES↔Fornecedor e REP↔Fornecedor (typeIds via env)",
+          "description": "POST /crm/v4/objects/.../associations com typeId de USER_DEFINED.",
+          "priority": "critical",
+          "estimateHours": 3
+        },
+        {
+          "id": "S5-T04",
+          "title": "Rotas POST /admin/ges e POST /admin/rep",
+          "description": "Payload = subset de IndicacaoCreate. Valida + chama upserts. Retorna HubSpot id + url do record.",
+          "priority": "high",
+          "estimateHours": 3
+        },
+        {
+          "id": "S5-T05",
+          "title": "Normalização de cargo",
+          "description": "Serviço normalizar_cargo(texto) → enum CargoGestor (§5.5 do wiki).",
+          "priority": "medium",
+          "estimateHours": 2
+        },
+        {
+          "id": "S5-T06",
+          "title": "Testes contra sandbox HubSpot",
+          "description": "Suite que cria e apaga registros de teste no portal sandbox; gated por flag RUN_HUBSPOT_E2E.",
+          "priority": "high",
+          "estimateHours": 4
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Sprint 6 — HubSpot WF1 (Indicação Varejo, orquestrador)",
+      "goal": "Ligar o worker que consome integration_events e sincroniza a indicação inteira para o HubSpot — GES + REP + Lojista + associações preliminares.",
+      "status": "todo",
+      "tasks": [
+        {
+          "id": "S6-T01",
+          "title": "HubSpotCRM.upsert_lojista(lojista) — company + propriedades",
+          "description": "Mapear name, domain, cnpj, whatsapp, tipo_produto_conexoes, condicao_especial, uf_resolvida, alto_potencial. Idempotente por CNPJ.",
+          "priority": "critical",
+          "estimateHours": 4
+        },
+        {
+          "id": "S6-T02",
+          "title": "sync_indicacao_to_hubspot(indicacao_id)",
+          "description": "Carrega indicação do Supabase, aplica cenário → chama upsert_ges, upsert_rep, upsert_lojista, cria associações Lojista↔GES/REP/Fornecedor.",
+          "priority": "critical",
+          "estimateHours": 6,
+          "files": ["backend/integrations/hubspot/sync.py"]
+        },
+        {
+          "id": "S6-T03",
+          "title": "Worker assíncrono consumindo integration_events",
+          "description": "Loop que pega eventos pending, processa, marca success/failed, incrementa attempts, agenda retry exponencial (30s, 5min, 30min).",
+          "priority": "critical",
+          "estimateHours": 5,
+          "files": ["backend/workers/integration_worker.py"]
+        },
+        {
+          "id": "S6-T04",
+          "title": "External refs em indicacoes.external_refs JSONB",
+          "description": "Após sync, persistir hubspot_contact_id, hubspot_rep_id, hubspot_company_ids[]. Facilita idempotência de reexecução.",
+          "priority": "high",
+          "estimateHours": 2
+        },
+        {
+          "id": "S6-T05",
+          "title": "Teste e2e WF1 em sandbox",
+          "description": "Disparar POST /indicacoes contra stack local + sandbox HubSpot; validar contato/company/rep criados e associados.",
+          "priority": "high",
+          "estimateHours": 4
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "Sprint 7 — HubSpot WF3 (Criação de Deals, cenários 1..6)",
+      "goal": "Criar Deal no pipeline Conexões por lojista, aplicando cenário + regionalização + alto potencial + associações. É o miolo da operação.",
+      "status": "todo",
+      "tasks": [
+        {
+          "id": "S7-T01",
+          "title": "Serviço resolver_cenario(indicacao) → int 1..5 (+ feira)",
+          "description": "Mapa determinístico participantes → cenário. Testes cobrindo os 5 cenários + eh_feira=true.",
+          "priority": "critical",
+          "estimateHours": 2
+        },
+        {
+          "id": "S7-T02",
+          "title": "HubSpotCRM.criar_deal(lojista, indicacao, cenario, owner_id, alto_potencial)",
+          "description": "POST /crm/v3/objects/deals com todas as propriedades (dealname, pipeline, dealstage, hubspot_owner_id, fornecedor_codigo, executivo_email, tipo_indicacao, participantes, eh_feira, feira_nome, prioridade, data_contato_programada, cenario_wf3, alto_potencial).",
+          "priority": "critical",
+          "estimateHours": 5
+        },
+        {
+          "id": "S7-T03",
+          "title": "Associações do Deal (Deal↔Lojista/GES/REP/Executivo) via typeIds",
+          "description": "Criar as 4 associações obrigatórias conforme cenário 1..5.",
+          "priority": "critical",
+          "estimateHours": 4
+        },
+        {
+          "id": "S7-T04",
+          "title": "integration_event.target=hubspot_wf3 disparado por indicação",
+          "description": "Um evento por lojista. Worker processa em sequência, registra deal_id em external_refs.",
+          "priority": "critical",
+          "estimateHours": 3
+        },
+        {
+          "id": "S7-T05",
+          "title": "Teste e2e WF3 em sandbox — 5 cenários + feira",
+          "description": "Matriz: cada combinação participantes × eh_feira gera Deal com associações e owner corretos.",
+          "priority": "high",
+          "estimateHours": 6
+        },
+        {
+          "id": "S7-T06",
+          "title": "Enriquecer view v_indicacoes_detalhe com deals criados",
+          "description": "Migration 005 agrega deals do HubSpot (via external_refs) — facilita painel.",
+          "priority": "medium",
+          "estimateHours": 2
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "Sprint 8 — Segurança + Teams + Excel + Rate Limit",
+      "goal": "Fechar todos os requisitos não funcionais: CORS forte, headers bloqueados, rate limit, sink Excel append-only, alertas Teams.",
+      "status": "todo",
+      "tasks": [
+        {
+          "id": "S8-T01",
+          "title": "CORS allowlist + bloqueio de CRLF/Host/Origin suspeitos",
+          "description": "Middleware que rejeita headers contendo \\r ou \\n e exige Origin em ALLOWED_ORIGINS (env).",
+          "priority": "critical",
+          "estimateHours": 3
+        },
+        {
+          "id": "S8-T02",
+          "title": "Rate limit no /indicacoes (slowapi/limits + Redis opcional)",
+          "description": "30 req/min por IP; 429 com Retry-After.",
+          "priority": "critical",
+          "estimateHours": 3
+        },
+        {
+          "id": "S8-T03",
+          "title": "Excel sink append-only (openpyxl)",
+          "description": "Writer idempotente que dedupe por idempotency_key e inclui indicacao_id em toda linha. Armazena local (/var/blu/excel) ou S3.",
+          "priority": "high",
+          "estimateHours": 4,
+          "files": ["backend/integrations/sinks/excel.py"]
+        },
+        {
+          "id": "S8-T04",
+          "title": "Notificador Teams (Incoming Webhook)",
+          "description": "Enviar mensagem no canal Conexões-Alertas em: HubSpot 5xx persistente, integration_event com 3 retries, /health degradado por >1 min.",
+          "priority": "high",
+          "estimateHours": 3,
+          "files": ["backend/integrations/notificacoes/teams.py"]
+        },
+        {
+          "id": "S8-T05",
+          "title": "Autenticação X-Admin-Token para rotas /admin/*",
+          "description": "Token estático via env; log de tentativa com IP.",
+          "priority": "high",
+          "estimateHours": 2
+        },
+        {
+          "id": "S8-T06",
+          "title": "Policy de RLS revisada (service_role x anon)",
+          "description": "Garantir que anon só leia views públicas; service_role (backend) faz todas as mutações.",
+          "priority": "critical",
+          "estimateHours": 2
+        },
+        {
+          "id": "S8-T07",
+          "title": "LGPD — TTL e soft-delete",
+          "description": "Job diário que limpa audit_log >180d e integration_events >30d. Soft-delete de indicacao preserva idempotency_key distinto por dia.",
+          "priority": "high",
+          "estimateHours": 3
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "Sprint 9 — Observabilidade, carga e rollout gradual",
+      "goal": "Ir para produção com confiança: logs estruturados, métricas, testes de carga, feature flag, e plano de rollback.",
+      "status": "todo",
+      "tasks": [
+        {
+          "id": "S9-T01",
+          "title": "Log estruturado JSON com campos padrão",
+          "description": "structlog/loguru; inclui request_id, indicacao_id, idempotency_key, workflow, step, duration_ms. Pipeline para Datadog/Grafana Loki (se disponível).",
+          "priority": "critical",
+          "estimateHours": 4
+        },
+        {
+          "id": "S9-T02",
+          "title": "Métricas Prometheus (/metrics)",
+          "description": "Counters: indicacoes_total{status}, integration_events_total{target,status}. Histogramas: latencia_webhook_ms, latencia_hubspot_ms. Gauge: backlog_integration_events.",
+          "priority": "high",
+          "estimateHours": 4
+        },
+        {
+          "id": "S9-T03",
+          "title": "Dashboard operacional (Grafana/Metabase)",
+          "description": "Painéis: indicações/dia, % dedup, % Alto Potencial, p95 webhook, taxa de sucesso por workflow, backlog.",
+          "priority": "medium",
+          "estimateHours": 4
+        },
+        {
+          "id": "S9-T04",
+          "title": "Teste de carga (k6/Locust) — 100 req/min sustentado",
+          "description": "Perfil: 80% POST /indicacoes, 20% GET. Validar p95 < 800 ms e zero erro 5xx.",
+          "priority": "high",
+          "estimateHours": 4
+        },
+        {
+          "id": "S9-T05",
+          "title": "Feature flag FEATURE_HUBSPOT_WF_{1,2,3,4} (env)",
+          "description": "Permitir ligar/desligar workflows sem deploy. Default: todos off em staging; on em produção após smoke.",
+          "priority": "high",
+          "estimateHours": 2
+        },
+        {
+          "id": "S9-T06",
+          "title": "Runbook + plano de rollback",
+          "description": "Markdown em docs/runbook.md com passos para: derrubar backend, redirecionar LP para n8n antigo, limpar integration_events pendentes, reexecutar backlog.",
+          "priority": "critical",
+          "estimateHours": 3,
+          "files": ["docs/runbook.md"]
+        },
+        {
+          "id": "S9-T07",
+          "title": "Rollout gradual (canary 10% → 50% → 100%)",
+          "description": "LP roteia 10% dos POSTs para /indicacoes novo por 48h; monitora dashboard; escala para 50% por 72h; 100%. Rollback automático se taxa de 5xx > 1%.",
+          "priority": "critical",
+          "estimateHours": 4
         }
       ]
     }
   ],
-  "backlog": [
+  "externalDependencies": [
     {
-      "id": "BK-01",
-      "title": "Autenticação com SSO Blu",
-      "description": "Login com conta corporativa da Blu (Google Workspace ou Azure AD) para restringir acesso apenas a funcionários.",
-      "priority": "medium",
-      "estimateHours": 8,
-      "status": "backlog"
+      "item": "JSON dos 4 workflows n8n exportado",
+      "owner": "user",
+      "blocks": ["S4", "S5", "S6", "S7"]
     },
     {
-      "id": "BK-02",
-      "title": "Notificações automáticas de nova indicação",
-      "description": "Enviar e-mail ou mensagem no Slack para o time comercial quando uma nova indicação for cadastrada.",
-      "priority": "medium",
-      "estimateHours": 4,
-      "status": "backlog"
+      "item": "Schema das HubDBs 116939574 e 27538329",
+      "owner": "user",
+      "blocks": ["S4-T02"]
     },
     {
-      "id": "BK-03",
-      "title": "Dashboard com métricas de engajamento",
-      "description": "Painel com gráficos: indicações por executivo, por indústria, por período, taxa de conversão.",
-      "priority": "low",
-      "estimateHours": 12,
-      "status": "backlog"
+      "item": "typeIds das 11 associações USER_DEFINED do portal HubSpot",
+      "owner": "user",
+      "blocks": ["S5-T03", "S6-T02", "S7-T03"]
     },
     {
-      "id": "BK-04",
-      "title": "Campo de status da indicação",
-      "description": "Adicionar status ao pipeline: Indicado → Em contato → Convertido → Perdido. Com histórico de mudanças.",
-      "priority": "high",
-      "estimateHours": 6,
-      "status": "backlog"
+      "item": "Lista VIP de CNPJs (Alto Potencial)",
+      "owner": "user",
+      "blocks": ["S2-T07"]
     },
     {
-      "id": "BK-05",
-      "title": "Integração com CRM",
-      "description": "Sincronizar indicações com o CRM em uso na Blu (ex: Salesforce, HubSpot) automaticamente ao cadastrar.",
-      "priority": "low",
-      "estimateHours": 16,
-      "status": "backlog"
+      "item": "Mapa UF → owner definitivo",
+      "owner": "user",
+      "blocks": ["S2-T08"]
+    },
+    {
+      "item": "Webhook Teams (canal Conexões-Alertas)",
+      "owner": "user",
+      "blocks": ["S8-T04"]
     }
-  ]
+  ],
+  "notes": {
+    "idempotency": "SHA-256(fornecedor+participantes+lojistas+dia_BR). UNIQUE INDEX em indicacoes.idempotency_key (soft-delete-aware). Payload duplicado retorna 201 com duplicada=true.",
+    "timezone": "Persistência sempre em UTC (timestamptz); apresentação em America/Sao_Paulo; dia do fingerprint calculado no fuso BR.",
+    "plug_and_play": "Todas as integrações HubSpot ficam em backend/integrations/hubspot/ como classes com métodos NotImplementedError (já prontos). Ligar = preencher o método + ativar feature flag.",
+    "auditoria": "Toda mutação em indicacoes, lojistas, gestores, representantes vai para audit_log com diff JSONB antes/depois + user_id (quando houver auth).",
+    "soft_delete": "Todas as tabelas principais têm deleted_at timestamptz. idempotency_key é unique apenas para linhas where deleted_at is null."
+  }
 }

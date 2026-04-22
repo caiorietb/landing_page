@@ -1,191 +1,131 @@
+"""
+Entrypoint FastAPI — Blu Engajamento Comercial / Pipe de Conexões.
+
+Camadas:
+    main.py          ← aqui: app, CORS, logging, roteamento de alto nível
+    schemas.py       ← Pydantic v2 (payload da LP)
+    validators.py    ← validadores fiscais puros
+    idempotency.py   ← cálculo da chave de dedup
+    database.py      ← cliente Supabase + health check
+    repositories.py  ← única camada que fala com o banco
+    services.py      ← regras de negócio (orquestra os repositórios)
+    integrations/    ← plug-and-play para HubSpot, Excel, S3 (stubs)
+"""
+
+from __future__ import annotations
+
+import logging
 import os
-import re
-from typing import Optional
-from dotenv import load_dotenv
+from typing import Any, Optional
+
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, field_validator
-from supabase import create_client
 
-load_dotenv()
+from .database import health_check as db_health
+from . import repositories as repo
+from .schemas import IndicacaoCreate, IndicacaoCreatedOut
+from .services import FornecedorDesconhecido, criar_indicacao
 
-supabase = create_client(
-    os.getenv("SUPABASE_URL"),
-    os.getenv("SUPABASE_KEY"),
+
+# ─── logging ────────────────────────────────────────────────────────────
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s :: %(message)s",
+)
+logger = logging.getLogger("blu.engajamento")
+
+
+# ─── app ────────────────────────────────────────────────────────────────
+
+app = FastAPI(
+    title="Blu Engajamento Comercial",
+    version="2.0.0",
+    description=(
+        "Backend da LP de indicações de varejo (substitui o fluxo n8n). "
+        "Fonte de verdade = Supabase. HubSpot/Excel são sinks "
+        "atualizados de forma assíncrona."
+    ),
 )
 
-app = FastAPI(title="Blu Engajamento Comercial")
-
+allowed_origins = [
+    o.strip()
+    for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5500").split(",")
+    if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=allowed_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 
-# ═══════════════════════════════════════════════════════════════════════
-#  Validação de CNPJ e CPF (algoritmo oficial — módulo 11)
-# ═══════════════════════════════════════════════════════════════════════
+# ─── rotas ──────────────────────────────────────────────────────────────
 
-def _somente_digitos(valor: str) -> str:
-    return re.sub(r"\D", "", valor or "")
-
-
-def validar_cnpj(cnpj: str) -> bool:
-    cnpj = _somente_digitos(cnpj)
-    if len(cnpj) != 14 or len(set(cnpj)) == 1:
-        return False
-
-    pesos1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
-    pesos2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
-
-    soma = sum(int(cnpj[i]) * pesos1[i] for i in range(12))
-    d1 = 11 - (soma % 11)
-    if d1 >= 10:
-        d1 = 0
-    if int(cnpj[12]) != d1:
-        return False
-
-    soma = sum(int(cnpj[i]) * pesos2[i] for i in range(13))
-    d2 = 11 - (soma % 11)
-    if d2 >= 10:
-        d2 = 0
-    return int(cnpj[13]) == d2
+@app.get("/", tags=["meta"])
+def root() -> dict[str, str]:
+    return {"status": "ok", "service": "blu-engajamento-comercial", "version": app.version}
 
 
-def validar_cpf(cpf: str) -> bool:
-    cpf = _somente_digitos(cpf)
-    if len(cpf) != 11 or len(set(cpf)) == 1:
-        return False
-
-    soma = sum(int(cpf[i]) * (10 - i) for i in range(9))
-    d1 = 11 - (soma % 11)
-    if d1 >= 10:
-        d1 = 0
-    if int(cpf[9]) != d1:
-        return False
-
-    soma = sum(int(cpf[i]) * (11 - i) for i in range(10))
-    d2 = 11 - (soma % 11)
-    if d2 >= 10:
-        d2 = 0
-    return int(cpf[10]) == d2
+@app.get("/health", tags=["meta"])
+def health() -> dict[str, Any]:
+    return {"status": "ok", **db_health()}
 
 
-# ═══════════════════════════════════════════════════════════════════════
-#  Schema Pydantic — rejeita payloads com documentos inválidos (HTTP 422)
-# ═══════════════════════════════════════════════════════════════════════
-
-class Indicacao(BaseModel):
-    executivo: str
-    cnpj_industria: str
-    doc_representante: str
-    cnpjs_varejistas: str  # "12345678000100,98765432000100"
-    detalhes: str = ""
-
-    @field_validator("executivo")
-    @classmethod
-    def _executivo_nao_vazio(cls, v: str) -> str:
-        v = (v or "").strip()
-        if not v:
-            raise ValueError("O nome ou e-mail do executivo é obrigatório.")
-        return v
-
-    @field_validator("cnpj_industria")
-    @classmethod
-    def _valida_cnpj_industria(cls, v: str) -> str:
-        digitos = _somente_digitos(v)
-        if len(digitos) != 14:
-            raise ValueError(f"CNPJ da indústria incompleto ({len(digitos)}/14 dígitos).")
-        if not validar_cnpj(digitos):
-            raise ValueError("CNPJ da indústria inválido.")
-        return digitos
-
-    @field_validator("doc_representante")
-    @classmethod
-    def _valida_doc_representante(cls, v: str) -> str:
-        digitos = _somente_digitos(v)
-        if len(digitos) == 11:
-            if not validar_cpf(digitos):
-                raise ValueError("CPF do representante inválido.")
-        elif len(digitos) == 14:
-            if not validar_cnpj(digitos):
-                raise ValueError("CNPJ do representante inválido.")
-        else:
-            raise ValueError(
-                f"Documento do representante deve ter 11 (CPF) ou 14 (CNPJ) dígitos — recebido: {len(digitos)}."
-            )
-        return digitos
-
-    @field_validator("cnpjs_varejistas")
-    @classmethod
-    def _valida_cnpjs_varejistas(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("Informe ao menos 1 CNPJ de varejista.")
-
-        itens = [p.strip() for p in v.split(",") if p.strip()]
-        if not itens:
-            raise ValueError("Informe ao menos 1 CNPJ de varejista.")
-        if len(itens) > 20:
-            raise ValueError(f"Máximo de 20 varejistas — recebido: {len(itens)}.")
-
-        digitos_list = []
-        for i, item in enumerate(itens, start=1):
-            d = _somente_digitos(item)
-            if len(d) != 14:
-                raise ValueError(f"CNPJ do varejista #{i} incompleto ({len(d)}/14 dígitos).")
-            if not validar_cnpj(d):
-                raise ValueError(f"CNPJ do varejista #{i} inválido.")
-            if d in digitos_list:
-                raise ValueError(f"CNPJ do varejista #{i} duplicado na mesma indicação.")
-            digitos_list.append(d)
-
-        return ",".join(digitos_list)
-
-
-# ═══════════════════════════════════════════════════════════════════════
-#  Rotas
-# ═══════════════════════════════════════════════════════════════════════
-
-@app.get("/")
-def health_check():
-    return {"status": "ok", "mensagem": "Backend Blu rodando!"}
-
-
-@app.post("/indicacoes", status_code=201)
-def criar_indicacao(dados: Indicacao):
+@app.post("/indicacoes", status_code=201, response_model=IndicacaoCreatedOut, tags=["indicacoes"])
+def post_indicacao(payload: IndicacaoCreate) -> IndicacaoCreatedOut:
     try:
-        resultado = supabase.table("indicacoes").insert({
-            "executivo":         dados.executivo,
-            "cnpj_industria":    dados.cnpj_industria,
-            "doc_representante": dados.doc_representante,
-            "cnpjs_varejistas":  dados.cnpjs_varejistas,
-            "detalhes":          dados.detalhes,
-        }).execute()
-    except Exception:
-        raise HTTPException(status_code=500, detail="Erro ao salvar no banco de dados.")
+        result = criar_indicacao(payload)
+    except FornecedorDesconhecido as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("erro ao criar indicação")
+        raise HTTPException(status_code=500, detail="Erro interno ao salvar indicação.") from exc
 
-    if not resultado.data:
-        raise HTTPException(status_code=500, detail="Erro ao salvar no banco de dados.")
+    return IndicacaoCreatedOut(
+        id=result["id"],
+        status=result["status"],
+        idempotency_key=result["idempotency_key"],
+        duplicada=result["duplicada"],
+        mensagem=(
+            "Indicação já registrada anteriormente (dedup idempotente)."
+            if result["duplicada"]
+            else "Indicação salva com sucesso."
+        ),
+    )
 
-    return {"mensagem": "Indicação salva com sucesso!", "dados": resultado.data[0]}
 
-
-@app.get("/indicacoes")
-def listar_indicacoes(
-    executivo: Optional[str] = Query(None, description="Filtro parcial por nome/email do executivo"),
-    cnpj_industria: Optional[str] = Query(None, description="Filtro exato por CNPJ da indústria (só dígitos)"),
-):
+@app.get("/fornecedores", tags=["master_data"])
+def get_fornecedores(ativos: bool = True) -> list[dict[str, Any]]:
+    """Lista fornecedores para popular o dropdown do form."""
     try:
-        query = supabase.table("indicacoes").select("*").order("criado_em", desc=True)
+        return repo.list_fornecedores(ativos=ativos)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("erro ao listar fornecedores")
+        raise HTTPException(status_code=500, detail="Erro ao listar fornecedores.") from exc
 
-        if executivo:
-            query = query.ilike("executivo", f"%{executivo}%")
-        if cnpj_industria:
-            query = query.eq("cnpj_industria", _somente_digitos(cnpj_industria))
 
-        resultado = query.execute()
-        return resultado.data or []
-    except Exception:
-        raise HTTPException(status_code=500, detail="Erro ao consultar o banco de dados.")
+@app.get("/feiras", tags=["master_data"])
+def get_feiras(ativos: bool = True) -> list[dict[str, Any]]:
+    """Lista feiras ativas (catálogo fechado da LP)."""
+    try:
+        return repo.list_feiras(ativos=ativos)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("erro ao listar feiras")
+        raise HTTPException(status_code=500, detail="Erro ao listar feiras.") from exc
+
+
+@app.get("/indicacoes", tags=["indicacoes"])
+def get_indicacoes(
+    executivo: Optional[str] = Query(None, description="Filtro parcial (nome ou email)."),
+    cnpj_industria: Optional[str] = Query(None, description="CNPJ do fornecedor (só dígitos)."),
+    limit: int = Query(500, ge=1, le=2000),
+) -> list[dict[str, Any]]:
+    try:
+        return repo.listar_indicacoes(
+            executivo=executivo, cnpj_industria=cnpj_industria, limit=limit
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("erro ao listar indicações")
+        raise HTTPException(status_code=500, detail="Erro ao consultar indicações.") from exc
